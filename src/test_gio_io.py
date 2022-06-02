@@ -1,17 +1,17 @@
 import cv2 as cv
 import gis_io
-from settings import RESOURCE_DIR
+from settings import ROOT_DIR, DRIVER
 import os
 
 TEST_FILE_NAME = 'test_map'
-RASTER_FILE_PATH = f'{RESOURCE_DIR}/{TEST_FILE_NAME}.gtiff'
-VECTOR_FILE_PATH = f'{RESOURCE_DIR}/{TEST_FILE_NAME}.shp'
-TIFF_FILE_PATH = f'{RESOURCE_DIR}/{TEST_FILE_NAME}.tiff'
-DRIVER = 'ESRI Shapefile'
+TEST_RESOURCE_DIR = f'{ROOT_DIR}/test_res'
+TEST_RASTER_FILE_PATH = f'{TEST_RESOURCE_DIR}/{TEST_FILE_NAME}.gtiff'
+TEST_VECTOR_FILE_PATH = f'{TEST_RESOURCE_DIR}/{TEST_FILE_NAME}.shp'
+TEST_TIFF_FILE_PATH = f'{TEST_RESOURCE_DIR}/{TEST_FILE_NAME}.tiff'
 
 def test_read_geo_tiff():
     try:
-        img, profile = gis_io.read_geotiff(f'{RESOURCE_DIR}/test_map.gtiff')
+        img, profile = gis_io.read_geotiff(TEST_RASTER_FILE_PATH)
 
         # RGB to BGR
         if len(img.shape) == 3:
@@ -28,8 +28,8 @@ def test_read_geo_tiff():
 
 def test_polygonize():
     try:
-        gis_io.polygonize(RASTER_FILE_PATH, VECTOR_FILE_PATH, DRIVER, 0)
-        if not os.path.exists(VECTOR_FILE_PATH):
+        gis_io.polygonize(TEST_RASTER_FILE_PATH, TEST_VECTOR_FILE_PATH, DRIVER, 0)
+        if not os.path.exists(TEST_VECTOR_FILE_PATH):
             assert False
 
     except Exception as e:
@@ -39,8 +39,8 @@ def test_polygonize():
 
 def test_plot_shape_file():
     try:
-        gis_io.polygonize(RASTER_FILE_PATH, VECTOR_FILE_PATH, DRIVER, 0)
-        gis_io.plot_shape_file(VECTOR_FILE_PATH)
+        gis_io.polygonize(TEST_RASTER_FILE_PATH, TEST_VECTOR_FILE_PATH, DRIVER, 0)
+        gis_io.plot_shape_file(TEST_VECTOR_FILE_PATH)
 
     except Exception as e:
         print(e)
@@ -49,10 +49,10 @@ def test_plot_shape_file():
 
 def test_save_image_tiff():
     try:
-        img, profile = gis_io.read_geotiff(RASTER_FILE_PATH)
-        gis_io.save_image_tiff(img, profile, RESOURCE_DIR, TEST_FILE_NAME)
+        img, profile = gis_io.read_geotiff(TEST_RASTER_FILE_PATH)
+        gis_io.save_image_tiff(img, profile, TEST_RESOURCE_DIR, TEST_FILE_NAME)
 
-        if not os.path.exists(TIFF_FILE_PATH):
+        if not os.path.exists(TEST_TIFF_FILE_PATH):
             assert False
 
     except Exception as e:
