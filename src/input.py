@@ -1,7 +1,5 @@
-import cv2 as cv
 import numpy as np
 import rasterio
-from rasterio.plot import show
 
 def readGeoTiff(imageFilePath):
     """Read a georeferenced tiff file and return its raster and profile data.
@@ -61,15 +59,4 @@ def readGeoTiff(imageFilePath):
         print(exc)
 
 
-img, profile = readGeoTiff('/home/student/PycharmProjects/forest-map-segmentation/res/map.gtiff')
-#img, profile = readGeoTiff('/home/student/PycharmProjects/forest-map-segmentation/res/girl.jpg')
-
-# RGB to BGR
-if len(img.shape) == 3:
-    img = img[:,:,::-1]
-
-print(profile)
-
-cv.imshow('img', img)
-cv.waitKey(0)
 
