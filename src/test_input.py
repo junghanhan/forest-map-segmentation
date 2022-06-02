@@ -4,7 +4,7 @@ from settings import RESOURCE_DIR
 
 def test_read_geo_tiff():
     try:
-        img, profile = input.readGeoTiff(f'{RESOURCE_DIR}/test_map.gtiff')
+        img, profile = input.read_geotiff(f'{RESOURCE_DIR}/test_map.gtiff')
 
         # RGB to BGR
         if len(img.shape) == 3:
