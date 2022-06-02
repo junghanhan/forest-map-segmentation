@@ -1,5 +1,6 @@
 # Resources (images, etc.)
 res/
+output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
