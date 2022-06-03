@@ -29,8 +29,7 @@ def test_read_geo_tiff():
 def test_polygonize():
     try:
         gis_io.polygonize(TEST_RASTER_FILE_PATH, TEST_VECTOR_FILE_PATH, DRIVER, 0)
-        if not os.path.exists(TEST_VECTOR_FILE_PATH):
-            assert False
+        assert os.path.exists(TEST_VECTOR_FILE_PATH)
 
     except Exception as e:
         print(e)
@@ -52,8 +51,7 @@ def test_save_image_tiff():
         img, profile = gis_io.read_geotiff(TEST_RASTER_FILE_PATH)
         gis_io.save_image_tiff(img, profile, TEST_RESOURCE_DIR, TEST_FILE_NAME)
 
-        if not os.path.exists(TEST_TIFF_FILE_PATH):
-            assert False
+        assert os.path.exists(TEST_TIFF_FILE_PATH)
 
     except Exception as e:
         print(e)
