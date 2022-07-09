@@ -11,4 +11,6 @@ MIN_BRANCH_LEN = 0.00001 # minimum branch length that will be regarded as a vali
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir))
 RESOURCE_DIR = f'{ROOT_DIR}/res'
+OUTPUT_DIR = f'{ROOT_DIR}/output'
+
 DRIVER = 'ESRI Shapefile'

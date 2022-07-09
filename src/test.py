@@ -140,7 +140,8 @@ def plot_line(line):
 
 
 #INPUT_FILENAME = '093C10g_1965_D_1.gtiff'
-INPUT_FILENAME = '092L3g_1969_D_1_clipped_1000x500.gtiff'
+INPUT_FILENAME = '092L3g_1969_D_1_clipped_4263x5137.gtiff'
+#INPUT_FILENAME = '092L3g_1969_D_1_clipped_1000x500.gtiff'
 INPUT_PATH = f'{RESOURCE_DIR}/{INPUT_FILENAME}'
 
 plt.figure(figsize=(35,33))
@@ -152,7 +153,7 @@ blob_keypoints = get_blobs (img, max_blob_area=60)
 blank = np.zeros((1, 1))
 blobs_img = cv2.drawKeypoints(img, blob_keypoints, blank, (0, 0, 255),cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 blobs_resized = cv2.resize(blobs_img,(960, 720))
-cv2.imshow('original image',img)
+#cv2.imshow('original image',img)
 
 # converting the pixel coordinates of blob into geospatial coordinates
 blob_px_coords = []
@@ -176,9 +177,9 @@ print(f'geojson num(found polygons) : {len(geojson_list)}')
 geoms = get_shapely_geom(geojson_list)
 
 # plotting map polygons
-for geom in geoms:
-  x,y = geom.exterior.xy # x,y are arrays
-  plt.plot(x,y)
+# for geom in geoms:
+#   x,y = geom.exterior.xy # x,y are arrays
+#   plt.plot(x,y)
 
 def create_dash_pairs(dot, dash_poly_pairs):
   """
@@ -230,13 +231,7 @@ def find_nearest_geom(target, geom_list):
 # returns drawn lines (lines enclosing dot-dashed lines) merged as MultiLineString or LineString
 # tentative default value :  dash_range=0.00035, max_dot_length=0.0005, max_dash_length=0.008
 def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0005, max_dash_length=0.024):
-  # polygons that their centerlines are already drawn; key: id(polygon), value: drawn centerline
-  centerlines = {}
-
-  # drawn lines including centerlines and connecting lines between dot and dashes
-  # all lines should be LineString type since it is merged later
   all_drawn_lines = []
-
   dots_tree = STRtree(dots)
   polygons_wo_dots = [poly for poly in polygons if len([dot for dot in dots_tree.query(poly) if
                                                         poly.intersects(dot) and poly.length <= max_dot_length]) == 0]
@@ -250,7 +245,7 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
 
   for p in dots:
     dot = Dot(p)
-    plt.plot(p.x, p.y, marker="o")
+    #plt.plot(p.x, p.y, marker="o")
     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree)
     if len(dash_poly_pairs) == 0:
       del Dot.all_dots[id(p)]
@@ -263,56 +258,60 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
   for dash in dashes_copy:
     if len(dash.conn_dots) < 2:
       dash_body_line = create_centerline(dash.poly)
-      endpoints = get_line_endpoints(dash_body_line)
+      if dash_body_line is not None:
+        endpoints = get_line_endpoints(dash_body_line)
 
-      # filter out the endpoints with the dots
-      for dot in dash.conn_dots:
-        min_dist_ep = find_nearest_geom(dot.point, endpoints)
-        endpoints.remove(min_dist_ep)
+        # filter out the endpoints with the dots
+        for dot in dash.conn_dots:
+          min_dist_ep = find_nearest_geom(dot.point, endpoints)
+          endpoints.remove(min_dist_ep)
 
-      # make virtual dots at the extrapolated location
-      # find dashes around the virtual dots
-      for ep in endpoints:
-        target_p = get_extrapolated_point(dash_body_line, ep)
-        plt.plot(target_p.x, target_p.y, marker="*")
-        dot = Dot(target_p)
-        dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree)
-        if len(dash_poly_pairs) == 0:
-          del Dot.all_dots[id(target_p)]
-        else:
-          dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
-          dot.save_dash_pairs(dash_pairs)
+        # make virtual dots at the extrapolated location
+        # find dashes around the virtual dots
+        for ep in endpoints:
+          target_p = get_extrapolated_point(dash_body_line, ep)
+          #plt.plot(target_p.x, target_p.y, marker="*")
+          dot = Dot(target_p)
+          dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree)
+          if len(dash_poly_pairs) == 0:
+            del Dot.all_dots[id(target_p)]
+          else:
+            dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
+            dot.save_dash_pairs(dash_pairs)
 
   # obtain dash lines
   for dash in Dash.all_dashes.values():
     dash_body_line = create_centerline(dash.poly)
-    endpoints = get_line_endpoints(dash_body_line)
+    if dash_body_line is not None:
+      endpoints = get_line_endpoints(dash_body_line)
 
-    # prepare dash body line to be merged
-    if isinstance(dash_body_line, MultiLineString):
-      lines = list(dash_body_line.geoms)
-    else:
-      lines = [dash_body_line]
+      # prepare dash body line to be merged
+      if isinstance(dash_body_line, MultiLineString):
+        lines = list(dash_body_line.geoms)
+      else:
+        lines = [dash_body_line]
 
-    # make the connecting line from dash's endpoint to dot
-    for dot in dash.conn_dots:
-      min_dist_ep = find_nearest_geom(dot.point, endpoints)
-      lines.append(LineString([min_dist_ep, dot.point]))
+      # make the connecting line from dash's endpoint to dot
+      for dot in dash.conn_dots:
+        min_dist_ep = find_nearest_geom(dot.point, endpoints)
+        lines.append(LineString([min_dist_ep, dot.point]))
 
-      # merged line with the dash body line and connecting line to dots
-    mline = linemerge(lines)
+        # merged line with the dash body line and connecting line to dots
+      mline = linemerge(lines)
 
-    # find shortest paths between dots
-    all_drawn_lines = []
-    path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in combinations(dash.conn_dots, 2)]
-    if len(path_lines) > 0:
-      dash_line = linemerge(path_lines)
-      dash.dash_line = dash_line
+      # find shortest paths between dots
+      path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in combinations(dash.conn_dots, 2)]
+      if len(path_lines) > 0:
+        dash_line = linemerge(path_lines)
+        dash.dash_line = dash_line
 
-      # plot the final line for dash
-      plot_line(dash_line)
+        # plot the final line for dash
+        #plot_line(dash_line)
 
-      all_drawn_lines.append(dash_line)
+        if isinstance(dash_line, MultiLineString):
+          all_drawn_lines.extend(list(dash_line.geoms))
+        else: # LineString
+          all_drawn_lines.append(dash_line)
 
   return linemerge(all_drawn_lines)
 
@@ -320,13 +319,34 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
 Dash.all_dashes.clear()
 lines = draw_dot_dashed_lines(blob_points, geoms)
 
-if lines.type == "MultiLineString":
-  multilinestr = lines
-  for linestr in multilinestr:
-    x, y = linestr.xy
-    plt.plot(x, y)
-else:
-  x, y = lines.xy
-  plt.plot(x, y)
+#print(lines)
+#plot_line(lines)
+#plt.show()
 
-plt.show()
+################# Test for writing the result to a shapefile
+import fiona
+import os
+from shapely.geometry import mapping
+from settings import OUTPUT_DIR
+
+SHAPEFILE_NAME = f'{INPUT_FILENAME.split(".")[0]}'
+SHAPEFILE_PATH = os.path.join(OUTPUT_DIR, SHAPEFILE_NAME)
+
+# assumes CRS as EPSG:4326
+def write_shapefile(geo_obj, shapefile_path):
+  # define schema
+  schema = {
+    'geometry': geo_obj.geom_type
+  }
+
+  # open a fiona object
+  with fiona.open(shapefile_path, mode='w', driver='ESRI Shapefile', schema=schema, crs="EPSG:4326") as shapefile_w:
+    # save record and close shapefile
+    record = {
+      'geometry': mapping(geo_obj)
+    }
+
+    shapefile_w.write(record)
+
+print(SHAPEFILE_PATH)
+write_shapefile(lines, SHAPEFILE_PATH) # lines : the result of draw_dot_dashed_lines
