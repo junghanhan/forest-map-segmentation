@@ -129,25 +129,24 @@ def get_line_endpoints(mline, min_branch_len=MIN_BRANCH_LEN):
 
   return endpoints
 
-def is_endpoint_inside(poly, sbox):
+def is_endpoint_inside(mline, sbox):
   """
   Check if at least one endpoint of the line derived from the polygon is within
   the search box.
 
-  poly : target polygon
+  mline : target LineString or MultiLineString
   sbox : search box
   """
-  if not isinstance(poly, Polygon):
-    raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
+
+  if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
+    raise TypeError(f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
   if not isinstance(sbox, Polygon):
     raise TypeError(f'Inappropriate type: {type(sbox)} for sbox whereas a Polygon is expected')
 
-  line = create_centerline(poly)
-  if line is not None:
-    endpoints = get_line_endpoints(line)
-    for p in endpoints:
-      if sbox.contains(p):
-        return True
+  endpoints = get_line_endpoints(mline)
+  for p in endpoints:
+    if sbox.contains(p):
+      return True
   return False
 
 

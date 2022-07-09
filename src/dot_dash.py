@@ -1,7 +1,7 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH
-from line_proc import is_endpoint_inside
+from line_proc import is_endpoint_inside, create_centerline
 
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -69,10 +69,14 @@ class Dot:
         self.dash_pairs = []
         self.save_dash_pairs(dash_pairs)
 
-    def search_dash_polygons(self, strtree, step_degree=20):
+    def search_dash_polygons(self, strtree, poly_line_dict, step_degree=20):
         """
         Search the dashes on both sides of the dot
         Returns the pairs of polygons that are assumed as dashes
+
+        strtree: STRTree that contains all polygons except the polygons created by dots
+        poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
+            This is to prevent redundant calls of creating centerline of polygon.
         """
 
         # distance: assumed distance from dot to dash (2*distance = search box width)
@@ -100,14 +104,22 @@ class Dot:
                     continue
 
                 # searched polygons by one search box
-                searched_polys = [geom for geom in strtree.query(sbox) if
+                candidate_polys = [geom for geom in strtree.query(sbox) if
                                   geom.intersects(sbox) and not id(geom) in found_dashes]
 
                 # check if the found polygon's endpoint is within the search box
                 # and its length is long enough to be a dash
-                searched_polys = [poly for poly in searched_polys
-                                  if is_endpoint_inside(poly, sbox)
-                                  and poly.length > MAX_DOT_LENGTH]
+                # TODO: How about storing centerline instead of polygons in the first place?
+                searched_polys = []
+                for poly in candidate_polys:
+                    if id(poly) in poly_line_dict:
+                        poly_centerline = poly_line_dict[id(poly)]
+                    else:
+                        poly_centerline = create_centerline(poly)
+                        poly_line_dict[id(poly)] = poly_centerline
+
+                    if is_endpoint_inside(poly_centerline, sbox) and poly.length > MAX_DOT_LENGTH:
+                        searched_polys.append(poly)
 
                 # check if each search box found only one
                 if len(searched_polys) == 1 and not searched_polys[0] in all_searched_polys:
