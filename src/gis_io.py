@@ -6,7 +6,11 @@ from pathlib import Path
 import fiona
 import shapefile as shp  # pyshp
 import numpy as np
+import geopandas as gpd
+from fiona.crs import from_epsg
+from shapely.strtree import STRtree
 
+from settings import EPSG_CODE
 
 ################################################################################
 # input functions
@@ -146,6 +150,7 @@ def polygonize(raster_file_path, vector_file_path, driver, mask_value):
 
     return dst.name
 
+
 def save_image_tiff(image_array, profile, destination_folder, file_name):
     """Save an image and profile data as a TIFF with a user-specified file name
     and to a user-specified directory. If the directory does not yet exist it
@@ -188,4 +193,48 @@ def save_image_tiff(image_array, profile, destination_folder, file_name):
             dst.write(tiff_array)
 
 
+def write_shapefile (polygons, labels, shapefile_path, epsg_code=EPSG_CODE):
+    """
+    Make shapefile features by associating polygons and labels
+    and write all the features in a shapefile
+
+    :param polygons: a list of Shapely Polygon objects
+    :param labels: a list of tuples; the result of label extraction (word, Point)
+        word is a string for a label and Point is a shapely Point object that contains
+        the coordinate of the label
+    :param shapefile_path: a string that represents the path that the shapefile will
+        be written
+    :param epsg_code: 4-5 digit numbers that represent CRS definitions
+    :return: None
+    """
+
+    result_polys_tree = STRtree(polygons)
+
+    poly_record_dict = {}  # id(poly): (feature_id, [(label_text, label_center_p), ]
+    records = gpd.GeoDataFrame()
+
+    for label in labels:
+        label_text = label[0]
+        label_center_p = label[1]
+        assoc_poly = result_polys_tree.query(label_center_p)
+
+        # if the searched polygon contains the centroid of label
+        # create a record or update the existing record
+        for poly in assoc_poly:
+            if label_center_p.within(poly):
+                if id(poly) in poly_record_dict:
+                    # update record
+                    feature_id, labels = poly_record_dict[id(poly)]
+                    labels.append((label_text, label_center_p))
+                    records.loc[feature_id, f'LBL{len(labels)}_TEXT'] = label_text
+                    records.loc[feature_id, f'LBL{len(labels)}_COORD'] = str(label_center_p.coords[0])
+                else:
+                    # create record
+                    feature_id = str(len(poly_record_dict) + 1)
+                    poly_record_dict[id(poly)] = (feature_id, [(label_text, label_center_p)])
+                    records.loc[feature_id, 'geometry'] = poly
+                    records.loc[feature_id, 'LBL1_TEXT'] = label_text
+                    records.loc[feature_id, 'LBL1_COORD'] = str(label_center_p.coords[0])
+    records.crs = from_epsg(epsg_code)
+    records.to_file(shapefile_path)
 
