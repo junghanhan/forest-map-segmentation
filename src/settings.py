@@ -11,6 +11,16 @@ MIN_BRANCH_LEN = 0.00001 # minimum branch length that will be regarded as a vali
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir))
 RESOURCE_DIR = f'{ROOT_DIR}/res'
+IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif'
+IMAGE_PATH = os.path.join(RESOURCE_DIR, IMAGE_FILE)
+
+MODEL_DIR = f'{ROOT_DIR}/trained_model'
+MODEL_FILE = 'map_labels_v3.h5'
+MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILE)
+# Target alphabet should match the trained model
+TARGET_ALPHABETS = '()*+-.0123456789ABCDEFGHIKLMNOPRSTUVWXYabcdefghijklmnopqrstuvwxyz'
+
 OUTPUT_DIR = f'{ROOT_DIR}/output'
+
 
 DRIVER = 'ESRI Shapefile'

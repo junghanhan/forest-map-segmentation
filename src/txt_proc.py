@@ -4,14 +4,34 @@ import cv2
 import math
 import numpy as np
 
-# returns (word, box) tuples recognized from the image
-def recognize_texts(image_file_path, recognizer):
-    # keras-ocr will automatically download pretrained
-    # weights for the detector and recognizer.
+
+def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abcdefghijklmnopqrstuvwxyz'):
+    """
+    Recognize the designated alphabets from the image
+
+    :param image_path: GeoTiff image path that OCR will be done
+    :param model_path: keras-OCR trained model path
+    :param target_alphabets: the characters that will be detected and recognized.
+        They should match the trained model's target alphabet
+    :return: (word, box) tuples recognized from the image.
+    """
+
+    if model_path is None:
+        # initializing a new model
+        recognizer = keras_ocr.recognition.Recognizer()
+    else:
+        # loading the previously trained model
+        recognizer = keras_ocr.recognition.Recognizer(alphabet=target_alphabets)
+        recognizer.model.load_weights(model_path)
+
+    recognizer.compile()
+
+    # loading the recognizer
+    # keras-ocr will automatically download pretrained weights for the detector.
     pipeline = keras_ocr.pipeline.Pipeline(recognizer=recognizer)
 
     # Image that OCR will be done
-    image = keras_ocr.tools.read(image_file_path)
+    image = keras_ocr.tools.read(image_path)
 
     # predictions in prediction_group is a list of
     # (word, box) tuples.
@@ -26,6 +46,7 @@ def plot_prediction_result(image_file_path, prediction_result):
     # plot the predictions
     _, ax = plt.subplots(nrows=1, figsize=(20, 20))
     keras_ocr.tools.drawAnnotations(image=image, predictions=prediction_result, ax=ax)
+    plt.show()
 
 
 # returns text removed image (cv2)
