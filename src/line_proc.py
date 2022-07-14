@@ -10,6 +10,7 @@ import networkx as nx
 from settings import MIN_BRANCH_LEN
 import matplotlib.pyplot as plt
 
+
 line_endpoints = {} # id(line): [endpoints], line can be LineString, MultiLineString
 
 # get blobs as KeyPoint obj from image
@@ -26,6 +27,31 @@ def get_blobs(image, min_blob_area=20, max_blob_area=100):
     keypoints = detector.detect(image)  # blobs
 
     return keypoints
+
+def get_dot_points(image_path):
+    """
+    Get dots as Shapely Point objects on input forest cover map
+    :param image_path: Input image path
+    :return: Shapely Point objects representing dots on a forest cover map
+    """
+
+    img = cv2.imread(image_path)
+
+    # detecting blobs
+    blob_keypoints = get_blobs(img, max_blob_area=60)
+
+    # converting the pixel coordinates of blob into geospatial coordinates
+    blob_px_coords = []
+    for blob in blob_keypoints:
+        blob_px_coords.append(blob.pt)
+
+    transform = rasterio.open(image_path).transform
+    blob_geo_coords = [affine_transform(transform, blob_px_coord) for blob_px_coord in blob_px_coords]
+
+    # make blobs shapely points by using their geo coordinates
+    blob_points = [Point(blob) for blob in blob_geo_coords]
+
+    return blob_points
 
 
 # get geojson list extracted from raster image
@@ -81,17 +107,6 @@ def create_centerline(geom, interpolation_distance=0.00006):
         merged_line = None
 
     return merged_line
-
-
-# get shapely geometries extracted from geojson
-def get_shapely_geom(geojson_list):
-    results = []
-
-    for geojson in geojson_list:
-        poly = shape(geojson['geometry'])
-        results.append(poly)
-
-    return results
 
 
 def get_search_box(point, distance):
@@ -248,6 +263,25 @@ def get_path_line(mline, start_p, end_p):
         result = mline
 
     return result
+
+
+def find_nearest_geom(target, geom_list):
+    """
+    Find the nearest geometric object to the target geometric object from list
+
+    :param target: Shapely geometric object
+    :param geom_list: a list of Shapely geometric objects
+    :return: the nearest Shapely geometric object
+    """
+
+    min_dist = float('inf')
+    for geom in geom_list:
+        dist = target.distance(geom)
+        if dist < min_dist:
+            min_dist = dist
+            min_dist_geom = geom
+
+    return min_dist_geom
 
 
 # matplotlib line plot helper function

@@ -154,3 +154,33 @@ class Dot:
                 self.dashes[id(dash)] = dash
             self.dash_pairs.append(dash_pair)
 
+
+# Helper functions related to Dot, Dash object
+def create_dash_pairs(dot, dash_poly_pairs):
+    """
+    Create dash pairs from dash polygon pairs
+    When Dash object is already created from the same polygon, the dot is stored in that Dash object.
+    When Dash object is newly created, the input dot is stored in that Dash object
+
+    :param dot: Dot object
+    :param dash_poly_pairs: dash polygon pairs around the Dot object
+    :return: Dash object pairs around the Dot object
+    """
+
+    dash_pairs = []
+    for dp1, dp2 in dash_poly_pairs:
+        if Dash.is_already_created(dp1):
+            dash1 = Dash.get_dash_obj(dp1)
+            dash1.save_dots([dot])
+        else:
+            dash1 = Dash(dp1, [dot])
+
+        if Dash.is_already_created(dp2):
+            dash2 = Dash.get_dash_obj(dp2)
+            dash2.save_dots([dot])
+        else:
+            dash2 = Dash(dp2, [dot])
+
+        dash_pairs.append((dash1, dash2))
+
+    return dash_pairs
