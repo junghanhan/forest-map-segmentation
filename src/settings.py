@@ -4,7 +4,7 @@ import os
 # DASH_SEARCH_BOX_W = 0.0003 * 2
 # DASH_SEARCH_BOX_H = 0.00005 * 2
 DASH_SEARCH_BOX_W = 0.0004 * 2
-DASH_SEARCH_BOX_H = 0.00006 * 2
+DASH_SEARCH_BOX_H = 0.00007 * 2
 MAX_DOT_LENGTH = 0.0005
 MIN_BRANCH_LEN = 0.00001 # minimum branch length that will be regarded as a valid branch of a dash
 

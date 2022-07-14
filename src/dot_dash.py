@@ -3,6 +3,7 @@ from shapely.geometry import Point, box, Polygon
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH
 from line_proc import is_endpoint_inside, create_centerline
 
+
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
 
@@ -112,14 +113,15 @@ class Dot:
                 # TODO: How about storing centerline instead of polygons in the first place?
                 searched_polys = []
                 for poly in candidate_polys:
-                    if id(poly) in poly_line_dict:
-                        poly_centerline = poly_line_dict[id(poly)]
-                    else:
-                        poly_centerline = create_centerline(poly)
-                        poly_line_dict[id(poly)] = poly_centerline
+                    if poly.length > MAX_DOT_LENGTH:
+                        if id(poly) in poly_line_dict:
+                            poly_centerline = poly_line_dict[id(poly)]
+                        else:
+                            poly_centerline = create_centerline(poly)
+                            poly_line_dict[id(poly)] = poly_centerline
 
-                    if is_endpoint_inside(poly_centerline, sbox) and poly.length > MAX_DOT_LENGTH:
-                        searched_polys.append(poly)
+                        if is_endpoint_inside(poly_centerline, sbox):
+                            searched_polys.append(poly)
 
                 # check if each search box found only one
                 if len(searched_polys) == 1 and not searched_polys[0] in all_searched_polys:
