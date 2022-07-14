@@ -140,26 +140,26 @@ def get_line_endpoints(mline, min_branch_len=MIN_BRANCH_LEN):
     global line_endpoints  # TODO: if using global is more efficient, then other dictionaries should also be global ?
 
     if id(mline) in line_endpoints:
-        return line_endpoints[id(mline)]
+        endpoints = line_endpoints[id(mline)]
     else:
-        # plot_line(mline)
+        #plot_line(mline)
         if isinstance(mline, MultiLineString):
-            mline = MultiLineString([line for line in mline if line.length > min_branch_len])
+            pruned_mline = MultiLineString([line for line in mline if line.length > min_branch_len])
             intersect_points = []
-            for line1, line2 in combinations([line for line in mline], 2):
+            for line1, line2 in combinations([line for line in pruned_mline], 2):
                 if line1.intersects(line2):
                     intersections = line1.intersection(line2)
                     if isinstance(intersections, list):
                         intersect_points.extend()
                     else:
                         intersect_points.append(intersections)
-            endpoints = [p for p in mline.boundary if p not in intersect_points]
+            endpoints = [p for p in pruned_mline.boundary if p not in intersect_points]
         else:  # LineString
             endpoints = list(mline.boundary)
 
         line_endpoints[id(mline)] = endpoints
 
-        return endpoints
+    return endpoints
 
 
 def is_endpoint_inside(mline, sbox):

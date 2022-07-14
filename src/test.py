@@ -20,10 +20,7 @@ IMAGE_PATH = os.path.join(RESOURCE_DIR, IMAGE_FILE)
 
 plt.figure(figsize=(21, 19))
 
-
 blob_points = get_dot_points(IMAGE_PATH)
-for p in blob_points:
-    plt.plot(p.x, p.y, marker="o")
 
 # get polygons' geojsons from raster image
 geojson_list = get_geojson_list(IMAGE_PATH, 0)  # masking black
@@ -48,15 +45,14 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
                                                           poly.intersects(dot) and poly.length <= max_dot_length]) == 0]
 
     # plotting non dot polygons
-    for geom in polygons_wo_dots:
-      x,y = geom.exterior.xy # x,y are arrays
-      plt.plot(x,y)
+    # for geom in polygons_wo_dots:
+    #   x,y = geom.exterior.xy # x,y are arrays
+    #   plt.plot(x,y)
 
     polygons_wo_dots_tree = STRtree(polygons_wo_dots)
 
     for p in dots:
         dot = Dot(p)
-        # plt.plot(p.x, p.y, marker="o")
         dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
         if len(dash_poly_pairs) == 0:
             del Dot.all_dots[id(p)]
@@ -77,16 +73,17 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
             if dash_body_line is not None:
                 endpoints = get_line_endpoints(dash_body_line)
 
-                # filter out the endpoints with the dots
+                # filter out the endpoints close to valid dots
+                # because virtual dot is no need at that end
+                endpoints_wo_dots = endpoints.copy()
                 for dot in dash.conn_dots:
                     min_dist_ep = find_nearest_geom(dot.point, endpoints)
-                    endpoints.remove(min_dist_ep)
+                    endpoints_wo_dots.remove(min_dist_ep)
 
                 # make virtual dots at the extrapolated location
                 # find dashes around the virtual dots
-                for ep in endpoints:
+                for ep in endpoints_wo_dots:
                     target_p = get_extrapolated_point(dash_body_line, ep)
-                    plt.plot(target_p.x, target_p.y, marker="*")
                     dot = Dot(target_p)
                     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
                     if len(dash_poly_pairs) == 0:
@@ -129,7 +126,7 @@ def draw_dot_dashed_lines(dots, polygons, dash_range=0.00030, max_dot_length=0.0
                 dash.dash_line = dash_line
 
                 # plot the final line for dash
-                plot_line(dash_line)
+                #plot_line(dash_line)
 
                 if isinstance(dash_line, MultiLineString):
                     all_drawn_lines.extend(list(dash_line.geoms))
