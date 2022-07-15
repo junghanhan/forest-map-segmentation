@@ -213,6 +213,14 @@ def write_shapefile (polygons, labels, shapefile_path, epsg_code=EPSG_CODE):
     poly_record_dict = {}  # id(poly): (feature_id, [(label_text, label_center_p), ]
     records = gpd.GeoDataFrame()
 
+    # make feature records for all polygons
+    for poly in polygons:
+        # create record
+        feature_id = str(len(poly_record_dict) + 1)
+        poly_record_dict[id(poly)] = (feature_id, [])
+        records.loc[feature_id, 'geometry'] = poly
+
+    # associate labels with corresponding polygons
     for label in labels:
         label_text = label[0]
         label_center_p = label[1]
@@ -222,19 +230,12 @@ def write_shapefile (polygons, labels, shapefile_path, epsg_code=EPSG_CODE):
         # create a record or update the existing record
         for poly in assoc_poly:
             if label_center_p.within(poly):
-                if id(poly) in poly_record_dict:
-                    # update record
-                    feature_id, labels = poly_record_dict[id(poly)]
-                    labels.append((label_text, label_center_p))
-                    records.loc[feature_id, f'LBL{len(labels)}_TEXT'] = label_text
-                    records.loc[feature_id, f'LBL{len(labels)}_COORD'] = str(label_center_p.coords[0])
-                else:
-                    # create record
-                    feature_id = str(len(poly_record_dict) + 1)
-                    poly_record_dict[id(poly)] = (feature_id, [(label_text, label_center_p)])
-                    records.loc[feature_id, 'geometry'] = poly
-                    records.loc[feature_id, 'LBL1_TEXT'] = label_text
-                    records.loc[feature_id, 'LBL1_COORD'] = str(label_center_p.coords[0])
+                # update record
+                feature_id, feature_labels = poly_record_dict[id(poly)]
+                feature_labels.append((label_text, label_center_p))
+                records.loc[feature_id, f'LBL{len(feature_labels)}_TEXT'] = label_text
+                records.loc[feature_id, f'LBL{len(feature_labels)}_COORD'] = str(label_center_p.coords[0])
+
     records.crs = from_epsg(epsg_code)
     records.to_file(shapefile_path)
 

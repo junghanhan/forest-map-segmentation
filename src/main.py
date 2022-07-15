@@ -24,10 +24,11 @@ def main():
 
     lines = draw_dot_dashed_lines(blob_points, geoms)
     result_polys, dangles, cuts, invalids = polygonize_full(lines)
+    result_polys = list(result_polys)
 
     print(f'Created final polygons: {len(result_polys)}')
-    for poly in result_polys:
-        plt.plot(*poly.exterior.xy)
+    # for poly in result_polys:
+    #     plt.plot(*poly.exterior.xy)
 
     # ----- Label Extraction
     ocr_result = recognize_texts(IMAGE_PATH, MODEL_PATH, TARGET_ALPHABETS)
