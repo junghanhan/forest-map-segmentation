@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom
 from dot_dash import draw_dot_dashed_lines
 from txt_proc import recognize_texts
-from settings import IMAGE_PATH, MODEL_PATH, SHAPEFILE_PATH, TARGET_ALPHABETS
+from settings import IMAGE_PATH, MODEL_PATH, POLY_SHAPEFILE_PATH, LINE_SHAPEFILE_PATH, TARGET_ALPHABETS
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
-from gis_io import write_shapefile
+from gis_io import write_line_shapefile, write_poly_shapefile
 
 
 def main():
@@ -23,6 +23,8 @@ def main():
     geoms = get_shapely_geom(geojson_list)
 
     lines = draw_dot_dashed_lines(blob_points, geoms)
+    write_line_shapefile(list(lines), LINE_SHAPEFILE_PATH)
+
     result_polys, dangles, cuts, invalids = polygonize_full(lines)
     result_polys = list(result_polys)
 
@@ -45,7 +47,7 @@ def main():
         labels.append((word, Polygon(geo_box_coords).centroid))
 
     # ----- Writing Shapefile
-    write_shapefile(result_polys, labels, SHAPEFILE_PATH)
+    write_poly_shapefile(result_polys, labels, POLY_SHAPEFILE_PATH)
 
 
 if __name__ == '__main__':

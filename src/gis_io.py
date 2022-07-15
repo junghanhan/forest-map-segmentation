@@ -193,7 +193,28 @@ def save_image_tiff(image_array, profile, destination_folder, file_name):
             dst.write(tiff_array)
 
 
-def write_shapefile (polygons, labels, shapefile_path, epsg_code=EPSG_CODE):
+def write_line_shapefile(lines, shapefile_path, epsg_code=EPSG_CODE):
+    """
+    Make shapefile features with lines
+    and write all the features in a shapefile
+
+    :param lines: a list of Shapely LineString objects
+    :param shapefile_path: a string that represents the path that the shapefile will
+        be written
+    :param epsg_code: 4-5 digit numbers that represent CRS definitions
+    :return: None
+    """
+
+    df = gpd.GeoDataFrame()
+
+    # make feature records for all polygons
+    # create record
+    df['geometry'] = lines
+    df.crs = from_epsg(epsg_code)
+    df.to_file(shapefile_path)
+
+
+def write_poly_shapefile(polygons, labels, shapefile_path, epsg_code=EPSG_CODE):
     """
     Make shapefile features by associating polygons and labels
     and write all the features in a shapefile

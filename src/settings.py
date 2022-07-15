@@ -12,18 +12,21 @@ EPSG_CODE = 4326
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir))
-INPUT_DIR = f'{ROOT_DIR}/input'
+INPUT_DIR = os.path.join(ROOT_DIR,'input')
 IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif'
 IMAGE_PATH = os.path.join(INPUT_DIR, IMAGE_FILE)
 
-MODEL_DIR = f'{ROOT_DIR}/trained_model'
+MODEL_DIR = os.path.join(ROOT_DIR,'trained_model')
 MODEL_FILE = 'map_labels_v3.h5'
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILE)
 # Target alphabet should match the trained model
 TARGET_ALPHABETS = '()*+-.0123456789ABCDEFGHIKLMNOPRSTUVWXYabcdefghijklmnopqrstuvwxyz'
 
-OUTPUT_DIR = f'{ROOT_DIR}/output'
+OUTPUT_DIR = os.path.join(ROOT_DIR,'output')
 SHAPEFILE_FILE = f'{IMAGE_FILE.split(".")[0]}'
-SHAPEFILE_PATH = os.path.join(OUTPUT_DIR, SHAPEFILE_FILE)
+POLY_SHAPEFILE_DIR = os.path.join(OUTPUT_DIR, 'poly')
+POLY_SHAPEFILE_PATH = os.path.join(POLY_SHAPEFILE_DIR, SHAPEFILE_FILE)
+LINE_SHAPEFILE_DIR = os.path.join(OUTPUT_DIR, 'line')
+LINE_SHAPEFILE_PATH = os.path.join(LINE_SHAPEFILE_DIR, SHAPEFILE_FILE)
 
 DRIVER = 'ESRI Shapefile'
