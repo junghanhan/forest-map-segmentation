@@ -14,7 +14,9 @@ EPSG_CODE = 4326
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir))
 INPUT_DIR = os.path.join(ROOT_DIR,'input')
+#IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif' # default test image
 IMAGE_FILE = '093C10e_1975_D_1_clipped1.tif'
+#IMAGE_FILE = '093C10f_1975_D_1_clipped2.tif'
 IMAGE_PATH = os.path.join(INPUT_DIR, IMAGE_FILE)
 
 MODEL_DIR = os.path.join(ROOT_DIR,'trained_model')

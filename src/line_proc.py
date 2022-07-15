@@ -161,7 +161,7 @@ def get_line_endpoints(mline, min_branch_len=MIN_BRANCH_LEN):
 
     return endpoints
 
-
+# deprecated
 def is_endpoint_inside(mline, sbox):
     """
     Check if at least one endpoint of the line derived from the polygon is within

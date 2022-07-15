@@ -28,29 +28,53 @@ def main(image_path, line_shapefile_path, poly_shapefile_path, model_path=MODEL_
     lines = draw_dot_dashed_lines(blob_points, geoms)
     write_line_shapefile(list(lines), line_shapefile_path)
 
-    result_polys, dangles, cuts, invalids = polygonize_full(lines)
-    result_polys = list(result_polys)
+    # result_polys, dangles, cuts, invalids = polygonize_full(lines)
+    # result_polys = list(result_polys)
+    #
+    # print(f'Created final polygons: {len(result_polys)}')
+    # for poly in result_polys:
+    #     plt.plot(*poly.exterior.xy)
+    #
+    # # ----- Label Extraction
+    # ocr_result = recognize_texts(image_path, model_path, target_alphabet)
+    # # plot_prediction_result(IMAGE_PATH, prediction_result)
+    #
+    # # affine transform for recognized labels
+    # labels = []
+    # transform = rasterio.open(image_path).transform
+    # for word, bbox in ocr_result:
+    #     geo_box_coords = []
+    #     for px_coord in bbox:
+    #         geo_coord = affine_transform(transform, px_coord)
+    #         geo_box_coords.append(geo_coord)
+    #     labels.append((word, Polygon(geo_box_coords).centroid))
+    #
+    # # ----- Writing Shapefile
+    # write_poly_shapefile(result_polys, labels, poly_shapefile_path)
 
-    print(f'Created final polygons: {len(result_polys)}')
-    for poly in result_polys:
-        plt.plot(*poly.exterior.xy)
+    if PLOT_RESULT:
+        plt.figure(figsize=(21, 19))
 
-    # ----- Label Extraction
-    ocr_result = recognize_texts(image_path, model_path, target_alphabet)
-    # plot_prediction_result(IMAGE_PATH, prediction_result)
+        # plot GeoTiff
+        ds = gdal.Open(image_path)
+        gt = ds.GetGeoTransform()
+        ulx, xres, _, uly, _, yres = gt
+        lrx = ulx + (ds.RasterXSize * xres)
+        lry = uly + (ds.RasterYSize * yres)
+        extent = [ulx, lrx, lry, uly]
+        array = ds.ReadAsArray()
 
-    # affine transform for recognized labels
-    labels = []
-    transform = rasterio.open(image_path).transform
-    for word, bbox in ocr_result:
-        geo_box_coords = []
-        for px_coord in bbox:
-            geo_coord = affine_transform(transform, px_coord)
-            geo_box_coords.append(geo_coord)
-        labels.append((word, Polygon(geo_box_coords).centroid))
+        plt.imshow(array, extent=extent)
 
-    # ----- Writing Shapefile
-    write_poly_shapefile(result_polys, labels, poly_shapefile_path)
+        # plot dots
+        for p in blob_points:
+            plt.plot(p.x, p.y, marker="o", markerfacecolor="red")
+
+
+        # plot lines
+        plot_line(lines)
+
+        plt.show()
 
 
 if __name__ == '__main__':
