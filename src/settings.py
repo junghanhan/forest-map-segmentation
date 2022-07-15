@@ -12,9 +12,9 @@ EPSG_CODE = 4326
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SRC_DIR, os.pardir))
-RESOURCE_DIR = f'{ROOT_DIR}/res'
+INPUT_DIR = f'{ROOT_DIR}/input'
 IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif'
-IMAGE_PATH = os.path.join(RESOURCE_DIR, IMAGE_FILE)
+IMAGE_PATH = os.path.join(INPUT_DIR, IMAGE_FILE)
 
 MODEL_DIR = f'{ROOT_DIR}/trained_model'
 MODEL_FILE = 'map_labels_v3.h5'

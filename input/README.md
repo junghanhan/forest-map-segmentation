@@ -1,0 +1,1 @@
+# GeoTiff Input Directory
