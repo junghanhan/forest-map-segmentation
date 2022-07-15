@@ -1,11 +1,13 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
-from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH
+from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH, MAX_SWAMP_SYMBOL_LEN
 from line_proc import is_endpoint_inside, get_line_endpoints, create_centerline, \
-    get_extrapolated_point, get_path_line, find_nearest_geom
+    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line
 from shapely.ops import unary_union, linemerge
 from itertools import combinations
 from shapely.strtree import STRtree
+import matplotlib.pyplot as plt
+
 
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -123,8 +125,14 @@ class Dot:
                             poly_centerline = create_centerline(poly)
                             poly_line_dict[id(poly)] = poly_centerline
 
-                        if is_endpoint_inside(poly_centerline, sbox):
-                            searched_polys.append(poly)
+                        # filter out polygons
+                        endpoints = get_line_endpoints(poly_centerline)
+                        # if at least an endpoint is in the search box
+                        if any(sbox.contains(p) for p in endpoints):
+                            # if not swamp symbol
+                            # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
+                            if not(len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
+                                searched_polys.append(poly)
 
                 # check if each search box found only one
                 if len(searched_polys) == 1 and not searched_polys[0] in all_searched_polys:
