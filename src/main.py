@@ -3,27 +3,28 @@ import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom
 from dot_dash import draw_dot_dashed_lines
 from txt_proc import recognize_texts
-from settings import IMAGE_PATH, MODEL_PATH, POLY_SHAPEFILE_PATH, LINE_SHAPEFILE_PATH, TARGET_ALPHABETS
+from settings import IMAGE_PATH, MODEL_PATH, LINE_SHAPEFILE_PATH, POLY_SHAPEFILE_PATH, TARGET_ALPHABETS, \
+    IMAGE_PATHS, LINE_SHAPEFILE_PATHS, POLY_SHAPEFILE_PATHS
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
 from gis_io import write_line_shapefile, write_poly_shapefile
 
 
-def main():
+def main(image_path, line_shapefile_path, poly_shapefile_path, model_path=MODEL_PATH, target_alphabet=TARGET_ALPHABETS):
     # ----- Line Extraction
     # dot detection
-    blob_points = get_dot_points(IMAGE_PATH)
+    blob_points = get_dot_points(image_path)
 
     # get polygons' geojsons from raster image
-    geojson_list = get_geojson_list(IMAGE_PATH, 0)  # masking black
+    geojson_list = get_geojson_list(image_path, 0)  # masking black
     print(f'Number of found polygons : {len(geojson_list)}')
 
     # get all polygons on the image
     geoms = get_shapely_geom(geojson_list)
 
     lines = draw_dot_dashed_lines(blob_points, geoms)
-    write_line_shapefile(list(lines), LINE_SHAPEFILE_PATH)
+    write_line_shapefile(list(lines), line_shapefile_path)
 
     result_polys, dangles, cuts, invalids = polygonize_full(lines)
     result_polys = list(result_polys)
@@ -33,12 +34,12 @@ def main():
     #     plt.plot(*poly.exterior.xy)
 
     # ----- Label Extraction
-    ocr_result = recognize_texts(IMAGE_PATH, MODEL_PATH, TARGET_ALPHABETS)
+    ocr_result = recognize_texts(image_path, model_path, target_alphabet)
     # plot_prediction_result(IMAGE_PATH, prediction_result)
 
     # affine transform for recognized labels
     labels = []
-    transform = rasterio.open(IMAGE_PATH).transform
+    transform = rasterio.open(image_path).transform
     for word, bbox in ocr_result:
         geo_box_coords = []
         for px_coord in bbox:
@@ -47,10 +48,25 @@ def main():
         labels.append((word, Polygon(geo_box_coords).centroid))
 
     # ----- Writing Shapefile
-    write_poly_shapefile(result_polys, labels, POLY_SHAPEFILE_PATH)
+    write_poly_shapefile(result_polys, labels, poly_shapefile_path)
 
+
+MULTITHREAD = False
 
 if __name__ == '__main__':
-    main()
+    if MULTITHREAD:
+        # multi thread
+        from multiprocessing import Pool
+
+        with Pool() as pool:
+            pool.starmap(main,
+                         [(image_path, line_shapefile_path, poly_shapefile_path)
+                          for (image_path, line_shapefile_path, poly_shapefile_path)
+                          in zip(IMAGE_PATHS, LINE_SHAPEFILE_PATHS, POLY_SHAPEFILE_PATHS)])
+    else:
+        # single thread
+        main(IMAGE_PATH, LINE_SHAPEFILE_PATH, POLY_SHAPEFILE_PATH)
+
+
 
 
