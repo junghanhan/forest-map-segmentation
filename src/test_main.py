@@ -17,6 +17,8 @@ import os
 
 
 def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphabet=TARGET_ALPHABETS):
+    plt.figure(figsize=(21, 19))
+
     image_path = os.path.join(input_dir, image_file)
     shapefile_file = image_file.split(".")[0]
     line_shapefile_path = os.path.join(os.path.join(output_dir, 'line'), shapefile_file)
@@ -75,7 +77,7 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
     logging.info('End of main')
 
     if PLOT_RESULT:
-        plt.figure(figsize=(21, 19))
+        # plt.figure(figsize=(21, 19))
 
         # plot GeoTiff
         ds = gdal.Open(image_path)

@@ -3,11 +3,11 @@ import rasterio
 from rasterio.features import shapes
 from centerline.geometry import Centerline
 from shapely.geometry import shape, MultiLineString, box, LineString, Polygon, Point
-from shapely.ops import linemerge
+from shapely.ops import linemerge, unary_union
 from itertools import combinations
 import math
 import networkx as nx
-from settings import MIN_BRANCH_LEN
+from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER
 import matplotlib.pyplot as plt
 
 
@@ -87,26 +87,33 @@ def get_shapely_geom(geojson_list):
     return results
 
 
-# create a centerline object for a polygon
-# returns a merged LineString if lines are continuous from tip to tail
-# otherwise a MultiLineString consists of multiple continuous LineStrings is returned
-# interpolation_distance: the higher value, the less branches from the centerline
-def create_centerline(geom, interpolation_distance=0.00006):
+def create_centerline(geom, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST, min_branch_len=MIN_BRANCH_LEN):
+    """
+    Create a centerline for a polygon
+
+    :param geom: target polygon that will be converted into line
+    :param buffer: value to simplify polygon
+    :param interpolation_distance: the higher value, the less branches from the centerline
+    :param min_branch_len: value to prune unnecessary short branches when centerline is created
+    :return: Returns a merged LineString if lines are continuous from tip to tail.
+        Otherwise, MultiLineString will be returned.
+    """
+
     try:
         # simplify the polygon to prevent unnecessary branches
-        geom = geom.buffer(0.00001, join_style=1)
+        geom = geom.buffer(buffer, join_style=1)
 
-        centerline_obj = Centerline(geom, 0.00006)
+        centerline_obj = Centerline(geom, interpolation_distance)
 
         # merge the centerlines into a single centerline
-        multi_line = MultiLineString(centerline_obj)
-        merged_line = linemerge(multi_line)
+        mline = MultiLineString(centerline_obj)
+        result_line = linemerge(mline)
     except Exception as inst:  # possibly TooFewRidgesError
         print(f'Exception {type(inst)} occurred.')
         print(inst)
-        merged_line = None
+        result_line = None
 
-    return merged_line
+    return result_line
 
 
 def get_search_box(point, distance):
@@ -125,7 +132,7 @@ def affine_transform (transform, pixel_coordinate):
     return (g_x, g_y)
 
 
-def get_line_endpoints(mline, min_branch_len=MIN_BRANCH_LEN):
+def get_line_endpoints(mline):
     """
     Get endpoints of MultiLineString except for intersecting points between its LineStrings
     Get endpoints of LineString
@@ -144,16 +151,15 @@ def get_line_endpoints(mline, min_branch_len=MIN_BRANCH_LEN):
     else:
         #plot_line(mline)
         if isinstance(mline, MultiLineString):
-            pruned_mline = MultiLineString([line for line in mline if line.length > min_branch_len])
             intersect_points = []
-            for line1, line2 in combinations([line for line in pruned_mline], 2):
+            for line1, line2 in combinations([line for line in mline], 2):
                 if line1.intersects(line2):
                     intersections = line1.intersection(line2)
                     if isinstance(intersections, list):
                         intersect_points.extend()
                     else:
                         intersect_points.append(intersections)
-            endpoints = [p for p in pruned_mline.boundary if p not in intersect_points]
+            endpoints = [p for p in mline.boundary if p not in intersect_points]
         else:  # LineString
             endpoints = list(mline.boundary)
 
@@ -184,7 +190,7 @@ def is_endpoint_inside(mline, sbox):
     return False
 
 
-def get_extrapolated_point(line, endpoint, dist=0.0001):
+def get_extrapolated_point(line, endpoint, dist=DASH_DOT_DIST):
     """
     Creates a point extrapoled in line's direction to endpoint
     line: LineString or MultiLineString that will be used to extrapolate
