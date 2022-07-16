@@ -7,7 +7,7 @@ from shapely.ops import unary_union, linemerge
 from itertools import combinations
 from shapely.strtree import STRtree
 import matplotlib.pyplot as plt
-
+import logging
 
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -197,9 +197,9 @@ def create_dash_pairs(dot, dash_poly_pairs):
     return dash_pairs
 
 
-def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
+def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
     """
-    Draws a solid vector line on dot-dash lines on the map.
+    Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
     instances of Dot and Dash classes.
     TODO: need refactoring and performance optimization
@@ -224,6 +224,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
 
     polygons_wo_dots_tree = STRtree(polygons_wo_dots)
 
+    logging.info('Searching dash polygons around the detected dots')
     for p in dots:
         dot = Dot(p)
         dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
@@ -233,6 +234,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
             dot.save_dash_pairs(dash_pairs)
 
+    logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two
     dashes_copy = list(Dash.all_dashes.values())
     for dash in dashes_copy:
@@ -265,6 +267,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                         dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
                         dot.save_dash_pairs(dash_pairs)
 
+    logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
     for dash in Dash.all_dashes.values():
         if id(dash.poly) in poly_line_dict:
@@ -291,6 +294,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             mline = linemerge(lines)
 
             # find shortest paths between dots
+            logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
                           combinations(dash.conn_dots, 2)]
 
@@ -306,4 +310,5 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                 else:  # LineString
                     all_drawn_lines.append(dash_line)
 
+    logging.info('Merging all extracted lines')
     return linemerge(all_drawn_lines)
