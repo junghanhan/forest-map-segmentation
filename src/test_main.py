@@ -25,7 +25,8 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
 
     logging.basicConfig(filename=logfile_path,
                         level=logging.DEBUG,
-                        format='%(asctime)s | %(name)s | %(levelname)s | %(message)s')
+                        format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+                        filemode='w')
 
     # ----- Line Extraction
     # dot detection
