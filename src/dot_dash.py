@@ -259,6 +259,8 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                 # find dashes around the virtual dots
                 for ep in endpoints_wo_dots:
                     target_p = get_extrapolated_point(dash_body_line, ep)
+                    # plot_line(dash_body_line)
+                    # plt.plot(target_p.x, target_p.y, marker="+")
                     dot = Dot(target_p)
                     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
                     if len(dash_poly_pairs) == 0:
@@ -293,14 +295,24 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
 
+            # print(mline)
+            # plot_line(mline)
+            # plt.show()
             # find shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
                           combinations(dash.conn_dots, 2)]
 
             if len(path_lines) > 0:
-                dash_line = unary_union(path_lines)
-                dash.dash_line = dash_line
+                # TODO: temporary exception handling for debugging purpose
+                try:
+                    dash_line = unary_union(path_lines)
+                    dash.dash_line = dash_line
+                except Exception as err:
+                    logging.debug(err)
+                    for line in path_lines:
+                        logging.debug(line)
+
 
                 # plot the final line for dash
                 #plot_line(dash_line)
