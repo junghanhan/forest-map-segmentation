@@ -9,10 +9,7 @@ import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
 from gis_io import write_line_shapefile, write_poly_shapefile
-import cv2
 import os
-import numpy as np
-from osgeo import gdal
 import logging
 
 
@@ -56,19 +53,23 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
         logging.info(f'Number of created final polygons: {len(result_polys)}')
 
         # ----- Label Extraction
-        logging.info('Extracting labels on the map')
-        ocr_result = recognize_texts(image_path, model_path, target_alphabet)
-        # plot_prediction_result(IMAGE_PATH, prediction_result)
+        try:
+            logging.info('Extracting labels on the map')
+            ocr_result = recognize_texts(image_path, model_path, target_alphabet)
+            # plot_prediction_result(IMAGE_PATH, prediction_result)
 
-        # affine transform for recognized labels
-        labels = []
-        transform = rasterio.open(image_path).transform
-        for word, bbox in ocr_result:
-            geo_box_coords = []
-            for px_coord in bbox:
-                geo_coord = affine_transform(transform, px_coord)
-                geo_box_coords.append(geo_coord)
-            labels.append((word, Polygon(geo_box_coords).centroid))
+            # affine transform for recognized labels
+            labels = []
+            transform = rasterio.open(image_path).transform
+            for word, bbox in ocr_result:
+                geo_box_coords = []
+                for px_coord in bbox:
+                    geo_coord = affine_transform(transform, px_coord)
+                    geo_box_coords.append(geo_coord)
+                labels.append((word, Polygon(geo_box_coords).centroid))
+        except Exception as err:
+            logging.debug(err)
+            labels = []
 
         # ----- Writing Shapefile
         logging.info('Writing extracted polygons and labels to Shapefile')
@@ -77,7 +78,6 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
         logging.info('End of main')
     except Exception as err:
         logging.debug(err)
-
 
 
 if __name__ == '__main__':

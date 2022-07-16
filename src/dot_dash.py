@@ -308,19 +308,22 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                 try:
                     dash_line = unary_union(path_lines)
                     dash.dash_line = dash_line
+
+                    # plot the final line for dash
+                    #plot_line(dash_line)
+
+                    if isinstance(dash_line, MultiLineString):
+                        all_drawn_lines.extend(list(dash_line.geoms))
+                    elif isinstance(dash_line, LineString):  # LineString
+                        all_drawn_lines.append(dash_line)
+                    else:
+                        TypeError(
+                            f'Inappropriate type: {type(dash_line)} for dash_line whereas a MultiLineString or LineString is expected')
+
                 except Exception as err:
                     logging.debug(err)
                     for line in path_lines:
                         logging.debug(line)
-
-
-                # plot the final line for dash
-                #plot_line(dash_line)
-
-                if isinstance(dash_line, MultiLineString):
-                    all_drawn_lines.extend(list(dash_line.geoms))
-                else:  # LineString
-                    all_drawn_lines.append(dash_line)
 
     logging.info('Merging all extracted lines')
     return linemerge(all_drawn_lines)

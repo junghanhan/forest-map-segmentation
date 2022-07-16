@@ -47,5 +47,4 @@ IMAGE_FILES = ['092L3g_1969_D_1_clipped_1000x500.gtiff',
 
 DRIVER = 'ESRI Shapefile'
 
-MULTITHREAD = False
-PLOT_RESULT = True
+MULTITHREAD = True
