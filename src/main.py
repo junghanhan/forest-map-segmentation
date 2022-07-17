@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line
 from dot_dash import extract_dot_dashed_lines
 from txt_proc import recognize_texts
-from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, PLOT_RESULT, \
+from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
     OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE
 import rasterio
 from shapely.geometry import Polygon
