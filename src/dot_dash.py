@@ -1,11 +1,13 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
-from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH
+from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH, MAX_SWAMP_SYMBOL_LEN
 from line_proc import is_endpoint_inside, get_line_endpoints, create_centerline, \
-    get_extrapolated_point, get_path_line, find_nearest_geom
+    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line
 from shapely.ops import unary_union, linemerge
 from itertools import combinations
 from shapely.strtree import STRtree
+import matplotlib.pyplot as plt
+import logging
 
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -123,8 +125,14 @@ class Dot:
                             poly_centerline = create_centerline(poly)
                             poly_line_dict[id(poly)] = poly_centerline
 
-                        if is_endpoint_inside(poly_centerline, sbox):
-                            searched_polys.append(poly)
+                        # filter out polygons
+                        endpoints = get_line_endpoints(poly_centerline)
+                        # if at least an endpoint is in the search box
+                        if any(sbox.contains(p) for p in endpoints):
+                            # if not swamp symbol
+                            # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
+                            if not(len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
+                                searched_polys.append(poly)
 
                 # check if each search box found only one
                 if len(searched_polys) == 1 and not searched_polys[0] in all_searched_polys:
@@ -189,9 +197,9 @@ def create_dash_pairs(dot, dash_poly_pairs):
     return dash_pairs
 
 
-def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
+def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
     """
-    Draws a solid vector line on dot-dash lines on the map.
+    Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
     instances of Dot and Dash classes.
     TODO: need refactoring and performance optimization
@@ -216,6 +224,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
 
     polygons_wo_dots_tree = STRtree(polygons_wo_dots)
 
+    logging.info('Searching dash polygons around the detected dots')
     for p in dots:
         dot = Dot(p)
         dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
@@ -225,6 +234,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
             dot.save_dash_pairs(dash_pairs)
 
+    logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two
     dashes_copy = list(Dash.all_dashes.values())
     for dash in dashes_copy:
@@ -249,6 +259,8 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                 # find dashes around the virtual dots
                 for ep in endpoints_wo_dots:
                     target_p = get_extrapolated_point(dash_body_line, ep)
+                    # plot_line(dash_body_line)
+                    # plt.plot(target_p.x, target_p.y, marker="+")
                     dot = Dot(target_p)
                     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
                     if len(dash_poly_pairs) == 0:
@@ -257,6 +269,7 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                         dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
                         dot.save_dash_pairs(dash_pairs)
 
+    logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
     for dash in Dash.all_dashes.values():
         if id(dash.poly) in poly_line_dict:
@@ -282,20 +295,35 @@ def draw_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
 
+            # print(mline)
+            # plot_line(mline)
+            # plt.show()
             # find shortest paths between dots
+            logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
                           combinations(dash.conn_dots, 2)]
 
             if len(path_lines) > 0:
-                dash_line = unary_union(path_lines)
-                dash.dash_line = dash_line
+                # TODO: temporary exception handling for debugging purpose
+                try:
+                    dash_line = unary_union(path_lines)
+                    dash.dash_line = dash_line
 
-                # plot the final line for dash
-                #plot_line(dash_line)
+                    # plot the final line for dash
+                    #plot_line(dash_line)
 
-                if isinstance(dash_line, MultiLineString):
-                    all_drawn_lines.extend(list(dash_line.geoms))
-                else:  # LineString
-                    all_drawn_lines.append(dash_line)
+                    if isinstance(dash_line, MultiLineString):
+                        all_drawn_lines.extend(list(dash_line.geoms))
+                    elif isinstance(dash_line, LineString):  # LineString
+                        all_drawn_lines.append(dash_line)
+                    else:
+                        TypeError(
+                            f'Inappropriate type: {type(dash_line)} for dash_line whereas a MultiLineString or LineString is expected')
 
+                except Exception as err:
+                    logging.debug(err)
+                    for line in path_lines:
+                        logging.debug(line)
+
+    logging.info('Merging all extracted lines')
     return linemerge(all_drawn_lines)
