@@ -235,7 +235,9 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             dot.save_dash_pairs(dash_pairs)
 
     logging.info('Making virtual dots and searching dash polygons around them')
-    # make virtual dots (dots not detected) for dashes having dots less than two
+    # make virtual dots (dots not detected) for dashes having dots less than two.
+    # set of dash pairs. Each dash pair is a frozen set of dash polygons;i.e., frozenset([id(poly1), id(poly2)])
+    found_dash_pairs = set()
     dashes_copy = list(Dash.all_dashes.values())
     for dash in dashes_copy:
         if len(dash.conn_dots) < 2:
@@ -263,9 +265,20 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                     # plt.plot(target_p.x, target_p.y, marker="+")
                     dot = Dot(target_p)
                     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
+
+                    # filter out dash pairs that are already found by another virtual dot
+                    dash_poly_pairs = [dash_poly_pair for dash_poly_pair in dash_poly_pairs
+                                       if not
+                                       (frozenset([id(dash_poly_pair[0]), id(dash_poly_pair[1])]) in found_dash_pairs)]
+
                     if len(dash_poly_pairs) == 0:
-                        del Dot.all_dots[id(target_p)]
+                        del Dot.all_dots[id(target_p)]  # delete virtual dot element from dict
+                        del dot  # delete virtual dot object itself
                     else:
+                        # plt.plot(target_p.x, target_p.y, marker="+")
+                        # plot_line(dash_body_line)
+                        found_dash_pairs.update({frozenset([id(dash_poly_pair[0]), id(dash_poly_pair[1])])
+                                             for dash_poly_pair in dash_poly_pairs})
                         dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
                         dot.save_dash_pairs(dash_pairs)
 
