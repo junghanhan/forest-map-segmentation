@@ -2,7 +2,7 @@ from shapely.ops import polygonize_full
 import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line, get_image_bbox
 from dot_dash import extract_dot_dashed_lines
-from txt_proc import recognize_texts
+from txt_proc import recognize_texts, plot_prediction_result
 from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
     OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, OUTER_IMAGE_BBOX_OFFSET, INNER_IMAGE_BBOX_OFFSET
 import rasterio
@@ -59,7 +59,7 @@ def main(image_file, input_dir, output_dir):
         try:
             logging.info('Extracting labels on the map')
             ocr_result = recognize_texts(image_path, MODEL_PATH, TARGET_ALPHABETS)
-            # plot_prediction_result(IMAGE_PATH, prediction_result)
+            # plot_prediction_result(image_path, ocr_result)
 
             # affine transform for recognized labels
             labels = []
