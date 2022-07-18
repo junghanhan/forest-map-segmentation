@@ -1,9 +1,11 @@
+from traceback import print_exc
+import logging
 import cv2
 import rasterio
 from rasterio.features import shapes
 from centerline.geometry import Centerline
-from shapely.geometry import shape, MultiLineString, box, LineString, Polygon, Point
-from shapely.ops import linemerge, unary_union
+from shapely.geometry import shape, MultiLineString, box, LineString, Polygon, Point, LinearRing, MultiPoint
+from shapely.ops import linemerge, nearest_points
 from itertools import combinations
 import math
 import networkx as nx
@@ -12,6 +14,7 @@ import matplotlib.pyplot as plt
 
 
 line_endpoints = {} # id(line): [endpoints], line can be LineString, MultiLineString
+
 
 # get blobs as KeyPoint obj from image
 # cv::KeyPoint attributes : pt, size, etc.
@@ -108,9 +111,10 @@ def create_centerline(geom, buffer=CENTERLINE_BUFFER, interpolation_distance=INT
         # merge the centerlines into a single centerline
         mline = MultiLineString(centerline_obj)
         result_line = linemerge(mline)
-    except Exception as inst:  # possibly TooFewRidgesError
-        print(f'Exception {type(inst)} occurred.')
-        print(inst)
+    except Exception as err:  # possibly TooFewRidgesError
+        logging.error(err, exc_info=True)
+        print_exc()
+        print(err)
         result_line = None
 
     return result_line
@@ -264,7 +268,14 @@ def get_path_line(mline, start_p, end_p):
                     add_edge_to_graph(G, prev_p, curr_p, 1)
                 prev_p = curr_p
 
-        result = LineString(nx.shortest_path(G, source=start_p, target=end_p))
+        try:
+            result = LineString(nx.shortest_path(G, source=start_p, target=end_p))
+        except ValueError as err:
+            logging.error(err, exc_info=True)
+            print_exc()
+            print(err)
+            result = None
+
     else:
         result = mline
 
@@ -288,6 +299,62 @@ def find_nearest_geom(target, geom_list):
             min_dist_geom = geom
 
     return min_dist_geom
+
+
+def get_image_bbox(image_path, offset=0):
+    """
+    Get image bounding box as a Shapely LinearRing object
+
+    :param image_path: Input image path
+    :param offset: pixel offset value that will be used to reduce the size of bounding box close to center
+    :return: a Shapely LinearRing object
+    """
+
+    left_x, lower_y, right_x, upper_y = rasterio.open(image_path).bounds
+    if offset * 2 > right_x - left_x or offset * 2 > upper_y - lower_y:
+        raise ValueError("offset value is too big for the image.")
+
+    left_x += offset
+    lower_y += offset
+    right_x -= offset
+    upper_y -= offset
+
+    image_bbox = LinearRing([(left_x, upper_y), (right_x, upper_y), (right_x, lower_y), (left_x, lower_y)])
+
+    return image_bbox
+
+
+def get_close_points(line1, line2):
+    """
+    Get points on geom1 which are close to the actual intersection points between geom1 and geom2
+    TODO: this is a workaround of shapely.ops.split since shapely.ops.split does not work due to precision issues.
+
+    :param line1: Shapely LineString or MultiLineString object
+    :param line2: Shapely LineString or MultiLineString object such as LineString
+    :return: a list of Shapely Point objects
+    """
+
+    if not isinstance(line1, MultiLineString) and not isinstance(line1, LineString):
+        raise TypeError(
+            f'Inappropriate type: {type(line1)} for mline whereas a MultiLineString or LineString is expected')
+    if not isinstance(line2, MultiLineString) and not isinstance(line2, LineString):
+        raise TypeError(
+            f'Inappropriate type: {type(line2)} for mline whereas a MultiLineString or LineString is expected')
+
+    close_points = []
+    intersect_points = line2.intersection(line1)
+    if not intersect_points.is_empty:
+        if isinstance(intersect_points, Point):
+            intersect_points = [intersect_points]
+        for intersect_p in intersect_points:
+            lines = [line1] if isinstance(line1, LineString) else line1
+            all_points_in_line = MultiPoint([p for line in lines for p in line.coords])
+            target_p = nearest_points(all_points_in_line, intersect_p)[0]
+            # to prevent duplicate points
+            if target_p not in close_points:
+                close_points.append(target_p)
+
+    return close_points
 
 
 # matplotlib line plot helper function

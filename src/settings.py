@@ -18,6 +18,10 @@ MAX_SWAMP_SYMBOL_LEN = 0.0025 # swamp symbol polygon's maximum length
 INTERPOLATION_DIST = 0.00006
 CENTERLINE_BUFFER = 0.00001
 
+# image bounding box offset value; the larger the value, the smaller the size of the image box
+OUTER_IMAGE_BBOX_OFFSET = 0.00004
+INNER_IMAGE_BBOX_OFFSET = 0.00005
+
 EPSG_CODE = 4326
 
 # basic directory name constants

@@ -1,13 +1,15 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH, MAX_SWAMP_SYMBOL_LEN
-from line_proc import is_endpoint_inside, get_line_endpoints, create_centerline, \
+from line_proc import get_line_endpoints, create_centerline, get_close_points, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line
 from shapely.ops import unary_union, linemerge
 from itertools import combinations
 from shapely.strtree import STRtree
 import matplotlib.pyplot as plt
 import logging
+from traceback import print_exc
+
 
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -148,11 +150,6 @@ class Dot:
                     raise Exception("all_searched_polys does not contain 2 polygons")
                 dash_pairs.append(tuple(all_searched_polys))
 
-                # plot
-                # for sbox in search_boxes:
-                #     bbox_x, bbox_y = sbox.exterior.xy
-                #     plt.plot(bbox_x, bbox_y)
-
         return dash_pairs
 
     def save_dash_pairs(self, dash_pairs):
@@ -197,7 +194,7 @@ def create_dash_pairs(dot, dash_poly_pairs):
     return dash_pairs
 
 
-def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
+def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox, max_dot_length=0.0005):
     """
     Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
@@ -208,6 +205,11 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
     :param polygons: all the polygons on the map as shapely Polygons
     :param max_dot_length: maximum length of dot Shapely Polygon; used to ignore dot polygons
         when dash polygons are searched
+    :param outer_image_bbox: outer image bounding box(Shapely LinearRing)
+        that will be connected with the lines at the edges of the image
+    :param inner_image_bbox: inner image bounding box(Shapely LinearRing)
+        that will be used to cut the drawn lines connected with the outer image bounding box
+        This is due to the precision issue caused by Shapley
     :return: connected dot-dashed lines as a Shapely MultiString
     """
 
@@ -261,8 +263,6 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                 # find dashes around the virtual dots
                 for ep in endpoints_wo_dots:
                     target_p = get_extrapolated_point(dash_body_line, ep)
-                    # plot_line(dash_body_line)
-                    # plt.plot(target_p.x, target_p.y, marker="+")
                     dot = Dot(target_p)
                     dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
 
@@ -275,8 +275,6 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                         del Dot.all_dots[id(target_p)]  # delete virtual dot element from dict
                         del dot  # delete virtual dot object itself
                     else:
-                        # plt.plot(target_p.x, target_p.y, marker="+")
-                        # plot_line(dash_body_line)
                         found_dash_pairs.update({frozenset([id(dash_poly_pair[0]), id(dash_poly_pair[1])])
                                              for dash_poly_pair in dash_poly_pairs})
                         dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
@@ -308,10 +306,15 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
 
-            # print(mline)
-            # plot_line(mline)
-            # plt.show()
-            # find shortest paths between dots
+            # make additional Dot objects to draw the lines that intersect with image bounding box
+            # these are not actual intersecting points
+            # these are the points on the line CLOSE TO intersecting points with image bounding box
+            # workaround due to shapely.ops.split precision issue
+            close_points = get_close_points(mline, outer_image_bbox)
+            for p in close_points:
+                dash.conn_dots.append(Dot(p))
+
+            # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
                           combinations(dash.conn_dots, 2)]
@@ -322,9 +325,6 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                     dash_line = unary_union(path_lines)
                     dash.dash_line = dash_line
 
-                    # plot the final line for dash
-                    #plot_line(dash_line)
-
                     if isinstance(dash_line, MultiLineString):
                         all_drawn_lines.extend(list(dash_line.geoms))
                     elif isinstance(dash_line, LineString):  # LineString
@@ -334,9 +334,14 @@ def extract_dot_dashed_lines(dots, polygons, max_dot_length=0.0005):
                             f'Inappropriate type: {type(dash_line)} for dash_line whereas a MultiLineString or LineString is expected')
 
                 except Exception as err:
-                    logging.debug(err)
-                    for line in path_lines:
-                        logging.debug(line)
+                    logging.error(err, exc_info=True)
+                    print_exc()
+                    print(err)
+
+    # include image bounding lines and split on the intersection points with drawn lines
+    # workaround due to shapely.ops.split precision issue
+    all_drawn_lines.append(inner_image_bbox)
+    all_drawn_lines = unary_union(all_drawn_lines)
 
     logging.info('Merging all extracted lines')
     return linemerge(all_drawn_lines)
