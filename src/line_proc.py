@@ -269,7 +269,9 @@ def get_path_line(mline, start_p, end_p):
                         add_edge_to_graph(G, prev_p, curr_p, 1)
                     prev_p = curr_p
 
-            result = LineString(nx.shortest_path(G, source=start_p, target=end_p))
+            # a list of coordinates representing the shortest path
+            path = nx.shortest_path(G, source=start_p, target=end_p)
+            result = LineString(path) if len(path) > 1 else None
         except Exception as err:
             logging.error(err, exc_info=True)
             print_exc()

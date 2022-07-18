@@ -319,6 +319,9 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
             logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
                           combinations(dash.conn_dots, 2)]
+            # filter out drawn lines that are possibly solid lines
+            path_lines = [line for line in path_lines
+                          if line is not None and line.length < max_dash_line_len]
 
             if len(path_lines) > 0:
                 # TODO: temporary exception handling for debugging purpose

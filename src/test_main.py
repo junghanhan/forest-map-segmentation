@@ -54,64 +54,62 @@ def main(image_file, input_dir, output_dir):
     logging.info('Writing extracted dot dashed lines to Shapefile')
     write_line_shapefile(list(lines), line_shapefile_path)
 
-    logging.info('Polygonizing the extracted dot dashed lines')
-    result_polys, dangles, cuts, invalids = polygonize_full(lines)
-    result_polys = list(result_polys)
-    logging.info(f'Number of created final polygons: {len(result_polys)}')
-
-    # ----- Label Extraction
-    try:
-        logging.info('Extracting labels on the map')
-        ocr_result = recognize_texts(image_path, MODEL_PATH, TARGET_ALPHABETS)
-        plot_prediction_result(image_path, ocr_result)
-
-        # affine transform for recognized labels
-        labels = []
-        transform = rasterio.open(image_path).transform
-        for word, bbox in ocr_result:
-            geo_box_coords = []
-            for px_coord in bbox:
-                geo_coord = affine_transform(transform, px_coord)
-                geo_box_coords.append(geo_coord)
-            labels.append((word, Polygon(geo_box_coords).centroid))
-    except Exception as err:
-        logging.error(err, exc_info=True)
-        print_exc()
-        print(err)
-        labels = []
-
-    # ----- Writing Shapefile
-    logging.info('Writing extracted polygons and labels to Shapefile')
-    write_poly_shapefile(result_polys, labels, poly_shapefile_path)
-
-    logging.info('End of main')
-
-
-    # plt.figure(figsize=(21, 19))
-
-    # # plot GeoTiff
-    # ds = gdal.Open(image_path)
-    # gt = ds.GetGeoTransform()
-    # ulx, xres, _, uly, _, yres = gt
-    # lrx = ulx + (ds.RasterXSize * xres)
-    # lry = uly + (ds.RasterYSize * yres)
-    # extent = [ulx, lrx, lry, uly]
-    # array = ds.ReadAsArray()
+    # logging.info('Polygonizing the extracted dot dashed lines')
+    # result_polys, dangles, cuts, invalids = polygonize_full(lines)
+    # result_polys = list(result_polys)
+    # logging.info(f'Number of created final polygons: {len(result_polys)}')
     #
-    # plt.imshow(array, extent=extent)
+    # # ----- Label Extraction
+    # try:
+    #     logging.info('Extracting labels on the map')
+    #     ocr_result = recognize_texts(image_path, MODEL_PATH, TARGET_ALPHABETS)
+    #     plot_prediction_result(image_path, ocr_result)
+    #
+    #     # affine transform for recognized labels
+    #     labels = []
+    #     transform = rasterio.open(image_path).transform
+    #     for word, bbox in ocr_result:
+    #         geo_box_coords = []
+    #         for px_coord in bbox:
+    #             geo_coord = affine_transform(transform, px_coord)
+    #             geo_box_coords.append(geo_coord)
+    #         labels.append((word, Polygon(geo_box_coords).centroid))
+    # except Exception as err:
+    #     logging.error(err, exc_info=True)
+    #     print_exc()
+    #     print(err)
+    #     labels = []
+    #
+    # # ----- Writing Shapefile
+    # logging.info('Writing extracted polygons and labels to Shapefile')
+    # write_poly_shapefile(result_polys, labels, poly_shapefile_path)
+    #
+    # logging.info('End of main')
+
+    # plot GeoTiff
+    ds = gdal.Open(image_path)
+    gt = ds.GetGeoTransform()
+    ulx, xres, _, uly, _, yres = gt
+    lrx = ulx + (ds.RasterXSize * xres)
+    lry = uly + (ds.RasterYSize * yres)
+    extent = [ulx, lrx, lry, uly]
+    array = ds.ReadAsArray()
+
+    plt.imshow(array, extent=extent)
     #
     # plot dots
     # for p in blob_points:
     #     plt.plot(p.x, p.y, marker="o", markerfacecolor="red")
     #
     # # plot lines
-    # # plot_line(lines)
+    plot_line(lines)
     #
     # # plot polygons
     # for poly in result_polys:
     #     plt.plot(*poly.exterior.xy)
 
-    # plt.show()
+    plt.show()
+
 
 if __name__ == '__main__':
     if MULTITHREAD:
