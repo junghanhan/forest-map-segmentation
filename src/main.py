@@ -1,19 +1,20 @@
 from shapely.ops import polygonize_full
 import matplotlib.pyplot as plt
-from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line
+from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line, get_image_bbox
 from dot_dash import extract_dot_dashed_lines
-from txt_proc import recognize_texts
+from txt_proc import recognize_texts, plot_prediction_result
 from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
-    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE
+    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, OUTER_IMAGE_BBOX_OFFSET, INNER_IMAGE_BBOX_OFFSET
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
 from gis_io import write_line_shapefile, write_poly_shapefile
 import os
 import logging
+from traceback import print_exc
 
 
-def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphabet=TARGET_ALPHABETS):
+def main(image_file, input_dir, output_dir):
     image_path = os.path.join(input_dir, image_file)
     shapefile_file = image_file.split(".")[0]
     line_shapefile_path = os.path.join(os.path.join(output_dir, 'line'), shapefile_file)
@@ -42,7 +43,9 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
         geoms = get_shapely_geom(geojson_list)
 
         logging.info('Extracting dot dashed lines')
-        lines = extract_dot_dashed_lines(blob_points, geoms)
+        outer_image_bbox = get_image_bbox(image_path, offset=OUTER_IMAGE_BBOX_OFFSET)
+        inner_image_bbox = get_image_bbox(image_path, offset=INNER_IMAGE_BBOX_OFFSET)
+        lines = extract_dot_dashed_lines(blob_points, geoms, outer_image_bbox, inner_image_bbox)
 
         logging.info('Writing extracted dot dashed lines to Shapefile')
         write_line_shapefile(list(lines), line_shapefile_path)
@@ -55,8 +58,8 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
         # ----- Label Extraction
         try:
             logging.info('Extracting labels on the map')
-            ocr_result = recognize_texts(image_path, model_path, target_alphabet)
-            # plot_prediction_result(IMAGE_PATH, prediction_result)
+            ocr_result = recognize_texts(image_path, MODEL_PATH, TARGET_ALPHABETS)
+            # plot_prediction_result(image_path, ocr_result)
 
             # affine transform for recognized labels
             labels = []
@@ -68,7 +71,9 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
                     geo_box_coords.append(geo_coord)
                 labels.append((word, Polygon(geo_box_coords).centroid))
         except Exception as err:
-            logging.debug(err)
+            logging.error(err, exc_info=True)
+            print_exc()
+            print(err)
             labels = []
 
         # ----- Writing Shapefile
@@ -77,7 +82,9 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
 
         logging.info('End of main')
     except Exception as err:
-        logging.debug(err)
+        logging.error(err, exc_info=True)
+        print_exc()
+        print(err)
 
 
 if __name__ == '__main__':

@@ -36,8 +36,11 @@ def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abc
     # predictions in prediction_group is a list of
     # (word, box) tuples.
     prediction_results = pipeline.recognize([image])
+    # filter out empty("") prediction results
+    result = [(word, box) for word, box in prediction_results[0]
+              if word is not ""]
 
-    return prediction_results[0]
+    return result
 
 
 def plot_prediction_result(image_file_path, prediction_result):

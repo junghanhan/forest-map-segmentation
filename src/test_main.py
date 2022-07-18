@@ -1,10 +1,11 @@
 from shapely.ops import polygonize_full
 import matplotlib.pyplot as plt
-from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line
+from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line, get_image_bbox
 from dot_dash import extract_dot_dashed_lines
-from txt_proc import recognize_texts
+from txt_proc import recognize_texts, plot_prediction_result
 from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
-    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE
+    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, OUTER_IMAGE_BBOX_OFFSET, \
+    INNER_IMAGE_BBOX_OFFSET
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
@@ -14,9 +15,10 @@ import numpy as np
 from osgeo import gdal
 import logging
 import os
+from traceback import print_exc
 
 
-def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphabet=TARGET_ALPHABETS):
+def main(image_file, input_dir, output_dir):
     plt.figure(figsize=(21, 19))
 
     image_path = os.path.join(input_dir, image_file)
@@ -30,61 +32,59 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
                         filemode='w')
 
-    # TODO: temporary exception handling for debugging purpose
-    try:
-        # ----- Line Extraction
-        # dot detection
-        logging.info('Detecting dots')
-        blob_points = get_dot_points(image_path)
+    # ----- Line Extraction
+    # dot detection
+    logging.info('Detecting dots')
+    blob_points = get_dot_points(image_path)
 
-        # get polygons' geojsons from raster image
-        logging.info('Getting GeoJSON from image')
-        geojson_list = get_geojson_list(image_path, 0)  # masking black
-        logging.info(f'Number of found polygons : {len(geojson_list)}')
+    # get polygons' geojsons from raster image
+    logging.info('Getting GeoJSON from image')
+    geojson_list = get_geojson_list(image_path, 0)  # masking black
+    logging.info(f'Number of found polygons : {len(geojson_list)}')
 
-        # get all polygons on the image
-        logging.info('Getting Shapely polygons from GeoJSONs')
-        geoms = get_shapely_geom(geojson_list)
+    # get all polygons on the image
+    logging.info('Getting Shapely polygons from GeoJSONs')
+    geoms = get_shapely_geom(geojson_list)
 
-        logging.info('Extracting dot dashed lines')
-        lines = extract_dot_dashed_lines(blob_points, geoms)
+    logging.info('Extracting dot dashed lines')
+    outer_image_bbox = get_image_bbox(image_path, offset=OUTER_IMAGE_BBOX_OFFSET)
+    inner_image_bbox = get_image_bbox(image_path, offset=INNER_IMAGE_BBOX_OFFSET)
+    lines = extract_dot_dashed_lines(blob_points, geoms, outer_image_bbox, inner_image_bbox)
 
-        logging.info('Writing extracted dot dashed lines to Shapefile')
-        write_line_shapefile(list(lines), line_shapefile_path)
+    logging.info('Writing extracted dot dashed lines to Shapefile')
+    write_line_shapefile(list(lines), line_shapefile_path)
 
-        logging.info('Polygonizing the extracted dot dashed lines')
-        result_polys, dangles, cuts, invalids = polygonize_full(lines)
-        result_polys = list(result_polys)
-        logging.info(f'Number of created final polygons: {len(result_polys)}')
-
-    #     # ----- Label Extraction
-    #     try:
-    #         logging.info('Extracting labels on the map')
-    #         ocr_result = recognize_texts(image_path, model_path, target_alphabet)
-    #         # plot_prediction_result(IMAGE_PATH, prediction_result)
+    # logging.info('Polygonizing the extracted dot dashed lines')
+    # result_polys, dangles, cuts, invalids = polygonize_full(lines)
+    # result_polys = list(result_polys)
+    # logging.info(f'Number of created final polygons: {len(result_polys)}')
     #
-    #         # affine transform for recognized labels
-    #         labels = []
-    #         transform = rasterio.open(image_path).transform
-    #         for word, bbox in ocr_result:
-    #             geo_box_coords = []
-    #             for px_coord in bbox:
-    #                 geo_coord = affine_transform(transform, px_coord)
-    #                 geo_box_coords.append(geo_coord)
-    #             labels.append((word, Polygon(geo_box_coords).centroid))
-    #     except Exception as err:
-    #         logging.debug(err)
-    #         labels = []
+    # # ----- Label Extraction
+    # try:
+    #     logging.info('Extracting labels on the map')
+    #     ocr_result = recognize_texts(image_path, MODEL_PATH, TARGET_ALPHABETS)
+    #     plot_prediction_result(image_path, ocr_result)
     #
-    #     # ----- Writing Shapefile
-    #     logging.info('Writing extracted polygons and labels to Shapefile')
-    #     write_poly_shapefile(result_polys, labels, poly_shapefile_path)
+    #     # affine transform for recognized labels
+    #     labels = []
+    #     transform = rasterio.open(image_path).transform
+    #     for word, bbox in ocr_result:
+    #         geo_box_coords = []
+    #         for px_coord in bbox:
+    #             geo_coord = affine_transform(transform, px_coord)
+    #             geo_box_coords.append(geo_coord)
+    #         labels.append((word, Polygon(geo_box_coords).centroid))
+    # except Exception as err:
+    #     logging.error(err, exc_info=True)
+    #     print_exc()
+    #     print(err)
+    #     labels = []
     #
-    #     logging.info('End of main')
-    except Exception as err:
-        logging.debug(err)
-
-    # plt.figure(figsize=(21, 19))
+    # # ----- Writing Shapefile
+    # logging.info('Writing extracted polygons and labels to Shapefile')
+    # write_poly_shapefile(result_polys, labels, poly_shapefile_path)
+    #
+    # logging.info('End of main')
 
     # plot GeoTiff
     ds = gdal.Open(image_path)
@@ -96,13 +96,18 @@ def main(image_file, input_dir, output_dir, model_path=MODEL_PATH, target_alphab
     array = ds.ReadAsArray()
 
     plt.imshow(array, extent=extent)
-
+    #
     # plot dots
-    for p in blob_points:
-        plt.plot(p.x, p.y, marker="o", markerfacecolor="red")
-
-    # plot lines
+    # for p in blob_points:
+    #     plt.plot(p.x, p.y, marker="o", markerfacecolor="red")
+    #
+    # # plot lines
     plot_line(lines)
+    #
+    # # plot polygons
+    # for poly in result_polys:
+    #     plt.plot(*poly.exterior.xy)
+
     plt.show()
 
 
