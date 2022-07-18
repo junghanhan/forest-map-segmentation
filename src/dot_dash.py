@@ -1,6 +1,6 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
-from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LENGTH, MAX_SWAMP_SYMBOL_LEN
+from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, MAX_DASH_LINE_LEN
 from line_proc import get_line_endpoints, create_centerline, get_close_points, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line
 from shapely.ops import unary_union, linemerge
@@ -77,7 +77,7 @@ class Dot:
         self.dash_pairs = []
         self.save_dash_pairs(dash_pairs)
 
-    def search_dash_polygons(self, strtree, poly_line_dict, step_degree=20):
+    def search_dash_polygons(self, strtree, poly_line_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
         """
         Search the dashes on both sides of the dot
         Returns the pairs of polygons that are assumed as dashes
@@ -120,7 +120,7 @@ class Dot:
                 # TODO: How about storing centerline instead of polygons in the first place?
                 searched_polys = []
                 for poly in candidate_polys:
-                    if poly.length > MAX_DOT_LENGTH:
+                    if poly.length > max_dot_len:
                         if id(poly) in poly_line_dict:
                             poly_centerline = poly_line_dict[id(poly)]
                         else:
@@ -194,7 +194,8 @@ def create_dash_pairs(dot, dash_poly_pairs):
     return dash_pairs
 
 
-def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox, max_dot_length=0.0005):
+def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
+                             max_dot_len=MAX_DOT_LEN, max_dash_line_len=MAX_DASH_LINE_LEN):
     """
     Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
@@ -203,7 +204,7 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
 
     :param dots: dots as shapely Points
     :param polygons: all the polygons on the map as shapely Polygons
-    :param max_dot_length: maximum length of dot Shapely Polygon; used to ignore dot polygons
+    :param max_dot_len: maximum length of dot Shapely Polygon; used to ignore dot polygons
         when dash polygons are searched
     :param outer_image_bbox: outer image bounding box(Shapely LinearRing)
         that will be connected with the lines at the edges of the image
@@ -217,7 +218,7 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
     poly_line_dict = {}  # id(polygon):centerline
     dots_tree = STRtree(dots)
     polygons_wo_dots = [poly for poly in polygons if len([dot for dot in dots_tree.query(poly) if
-                                                          poly.intersects(dot) and poly.length <= max_dot_length]) == 0]
+                                                          poly.intersects(dot) and poly.length <= max_dot_len]) == 0]
 
     # plotting non dot polygons
     # for geom in polygons_wo_dots:

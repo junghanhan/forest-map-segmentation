@@ -259,18 +259,18 @@ def get_path_line(mline, start_p, end_p):
         if isinstance(end_p, Point):
             end_p = end_p.coords[0]
 
-        G = nx.Graph()
-
-        for line in mline:
-            prev_p = None
-            for curr_p in line.coords:
-                if prev_p is not None:
-                    add_edge_to_graph(G, prev_p, curr_p, 1)
-                prev_p = curr_p
-
         try:
+            G = nx.Graph()
+
+            for line in mline:
+                prev_p = None
+                for curr_p in line.coords:
+                    if prev_p is not None:
+                        add_edge_to_graph(G, prev_p, curr_p, 1)
+                    prev_p = curr_p
+
             result = LineString(nx.shortest_path(G, source=start_p, target=end_p))
-        except ValueError as err:
+        except Exception as err:
             logging.error(err, exc_info=True)
             print_exc()
             print(err)
