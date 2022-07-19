@@ -2,7 +2,8 @@ from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, MAX_DASH_LINE_LEN
 from line_proc import get_line_endpoints, create_centerline, get_close_points, \
-    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line
+    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, get_search_box, \
+    get_common_endpoints
 from shapely.ops import unary_union, linemerge
 from itertools import combinations
 from shapely.strtree import STRtree
@@ -11,6 +12,7 @@ import logging
 from traceback import print_exc
 
 
+# TODO: getter, setter implement (property)
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
 
@@ -27,7 +29,7 @@ class Dash:
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
         return Dash.all_dashes[id(poly)]
 
-    def __init__(self, poly, conn_dots=[], dash_line=None):
+    def __init__(self, poly, centerline, endpoints, dash_line=None):
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
 
@@ -36,18 +38,24 @@ class Dash:
 
         Dash.all_dashes[id(poly)] = self
         self.poly = poly
-        self.conn_dots = []
-        self.save_dots(conn_dots)
+        self.centerline = centerline
+        self.endpoints = endpoints
         self.dash_line = dash_line
+        self.dot_ep_pairs = []
 
-    def save_dots(self, dots):
-        for dot in dots:
+    def save_dot_ep_pairs(self, dot_ep_pairs):
+        for dot, ep in dot_ep_pairs:
             if not isinstance(dot, Dot):
                 raise TypeError(f'Inappropriate type: {type(dot)} for dot whereas a Dot is expected')
-            if dot in self.conn_dots:
+            if dot in self.dot_ep_pairs:
                 raise Exception("The dot is already in this dash")
-            self.conn_dots.append(dot)
+            if not isinstance(ep, Point):
+                raise TypeError(f'Inappropriate type: {type(ep)} for ep whereas a Point is expected')
 
+            self.dot_ep_pairs.append((dot, ep))
+
+
+# TODO: getter, setter implement (property)
 class Dot:
     all_dots = {}  # key: id(Point), value: Dot instance
 
@@ -74,17 +82,25 @@ class Dot:
         Dot.all_dots[id(point)] = self
         self.point = point
         self.dashes = {}
-        self.dash_pairs = []
+        self.dash_pairs = []  # [(Dash object, Dash object), ]
         self.save_dash_pairs(dash_pairs)
 
-    def search_dash_polygons(self, strtree, poly_line_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
-        """
-        Search the dashes on both sides of the dot
-        Returns the pairs of polygons that are assumed as dashes
+    def __del__(self):
+        del Dot.all_dots[id(self.point)]
 
-        strtree: STRTree that contains all polygons except the polygons created by dots
-        poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
+    def search_dash_polygons(self, strtree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
+        """
+        Search and saves the dashes on both sides of the dot
+        Returns the pairs of Dash objects
+
+        :param strtree: STRTree that contains all polygons except the polygons created by dots
+        :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
             This is to prevent redundant calls of creating centerline of polygon.
+        :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
+            This is to prevent redundant calls of get_line_endpoints.
+        :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
+        :param max_dot_len: maximum dot length value to be used to filter out dot polygons
+        :return: a list of dash pairs. [(Dash object, Dash object), ]
         """
 
         # distance: assumed distance from dot to dash (2*distance = search box width)
@@ -94,7 +110,7 @@ class Dot:
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
 
-        found_dashes = {}
+        found_dash_polys = {}
         dash_pairs = []
 
         default_boxes = get_dash_search_boxes(self.point)
@@ -104,51 +120,79 @@ class Dot:
             search_boxes = [affinity.rotate(sbox, d, origin=self.point) for sbox in default_boxes]
 
             all_found = True  # True when all search boxes found exactly one polygon each
-            all_searched_polys = []  # the polygons searched by all the search boxes rotated with a certain degree
+            all_searched_dashes = []  # the polygons searched by all the search boxes rotated with a certain degree
 
             # handle each search box one at a time
             for sbox in search_boxes:
                 if not all_found:
                     continue
 
-                # searched polygons by one search box
-                candidate_polys = [geom for geom in strtree.query(sbox) if
-                                  geom.intersects(sbox) and not id(geom) in found_dashes]
+                # searched polygons by one search box; filter out that is already searched by the other end's search box
+                candidate_polys = [geom for geom in strtree.query(sbox)
+                                   if geom.intersects(sbox) and not id(geom) in found_dash_polys]
 
-                # check if the found polygon's endpoint is within the search box
-                # and its length is long enough to be a dash
-                # TODO: How about storing centerline instead of polygons in the first place?
-                searched_polys = []
+                # filter out false dash polygons based on rules
+                searched_dashes = []  # [(polygon, centerline, endpoints)]
                 for poly in candidate_polys:
+                    # rule 1: dash polygon's perimeter should long enough
                     if poly.length > max_dot_len:
-                        if id(poly) in poly_line_dict:
-                            poly_centerline = poly_line_dict[id(poly)]
-                        else:
-                            poly_centerline = create_centerline(poly)
-                            poly_line_dict[id(poly)] = poly_centerline
+                        # get centerline of the polygon
+                        poly_centerline = create_centerline(poly, poly_line_dict)
 
-                        # filter out polygons
-                        endpoints = get_line_endpoints(poly_centerline)
-                        # if at least an endpoint is in the search box
-                        if any(sbox.contains(p) for p in endpoints):
-                            # if not swamp symbol
-                            # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
-                            if not(len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
-                                searched_polys.append(poly)
+                        # get endpoints of the centerline
+                        endpoints = get_line_endpoints(poly_centerline, line_ep_dict)
 
-                # check if each search box found only one
-                if len(searched_polys) == 1 and not searched_polys[0] in all_searched_polys:
-                    all_searched_polys.extend(searched_polys)
+                        # rule 2: dash polygon is not swamp symbol (too many endpoints compared to its perimeter)
+                        # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
+                        if not (len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
+                            # rule 3: dash polygon's endpoint should be in the search box
+                            filtered_endpoints = endpoints.copy()
+                            for p in endpoints:
+                                if sbox.contains(p):
+                                    # filter out false endpoints that is assumed to be created
+                                    # at branches near the actual endpoint
+                                    # TODO: DASH_SEARCH_BOX_W / 2 is a temporary value
+                                    ep_sbox = get_search_box(self.point, DASH_SEARCH_BOX_W / 2)  # endpoint search box
+                                    endpoints_in_box = [p for p in endpoints if ep_sbox.contains(p)]
+                                    # select the nearest endpoint in box as a valid endpoint
+                                    min_dist_ep = find_nearest_geom(self.point, endpoints_in_box)
+                                    filtered_endpoints = [fp for fp in filtered_endpoints
+                                                          if not ep_sbox.contains(fp)]
+                                    filtered_endpoints.append(min_dist_ep)
+
+                                    temp_dash = (poly, poly_centerline, min_dist_ep, filtered_endpoints)
+                                    searched_dashes.append(temp_dash)
+                                    break
+
+                # rule 4: one search box should find only one dash
+                if len(searched_dashes) == 1 and not searched_dashes[0] in all_searched_dashes:
+                    all_searched_dashes.extend(searched_dashes)
                 else:
                     all_found = False
-                    all_searched_polys.clear()
+                    all_searched_dashes.clear()
 
             if all_found:
-                for poly in all_searched_polys:
-                    found_dashes[id(poly)] = poly
-                if len(all_searched_polys) != 2:
-                    raise Exception("all_searched_polys does not contain 2 polygons")
-                dash_pairs.append(tuple(all_searched_polys))
+                if len(all_searched_dashes) != 2:
+                    raise Exception("all_searched_dashes does not contain 2 dashes")
+
+                # create dash objects and pair them
+                dash_pair = tuple()
+                for poly, centerline, min_dist_ep, endpoints in all_searched_dashes:
+                    found_dash_polys[id(poly)] = poly
+                    if Dash.is_already_created(poly):
+                        dash = Dash.get_dash_obj(poly)
+                        dash.save_dot_ep_pairs([(self, min_dist_ep)])
+                        # if dash object has already made by other dots, then store only the common endpoints
+                        dash.endpoints = get_common_endpoints(dash.endpoints, endpoints)
+                    else:
+                        dash = Dash(poly, centerline, endpoints)
+                        dash.save_dot_ep_pairs([(self, min_dist_ep)])
+
+                    dash_pair += (dash,)
+
+                dash_pairs.append(dash_pair)
+
+        self.save_dash_pairs(dash_pairs)
 
         return dash_pairs
 
@@ -164,34 +208,35 @@ class Dot:
 
 
 # Helper functions related to Dot, Dash object
-def create_dash_pairs(dot, dash_poly_pairs):
-    """
-    Create dash pairs from dash polygon pairs
-    When Dash object is already created from the same polygon, the dot is stored in that Dash object.
-    When Dash object is newly created, the input dot is stored in that Dash object
-
-    :param dot: Dot object
-    :param dash_poly_pairs: dash polygon pairs around the Dot object
-    :return: Dash object pairs around the Dot object
-    """
-
-    dash_pairs = []
-    for dp1, dp2 in dash_poly_pairs:
-        if Dash.is_already_created(dp1):
-            dash1 = Dash.get_dash_obj(dp1)
-            dash1.save_dots([dot])
-        else:
-            dash1 = Dash(dp1, [dot])
-
-        if Dash.is_already_created(dp2):
-            dash2 = Dash.get_dash_obj(dp2)
-            dash2.save_dots([dot])
-        else:
-            dash2 = Dash(dp2, [dot])
-
-        dash_pairs.append((dash1, dash2))
-
-    return dash_pairs
+# deprecated
+# def create_dash_pairs(dot, dash_poly_pairs):
+#     """
+#     Create dash pairs from dash polygon pairs
+#     When Dash object is already created from the same polygon, the dot is stored in that Dash object.
+#     When Dash object is newly created, the input dot is stored in that Dash object
+#
+#     :param dot: Dot object
+#     :param dash_poly_pairs: dash polygon pairs around the Dot object
+#     :return: Dash object pairs around the Dot object
+#     """
+#
+#     dash_pairs = []
+#     for dp1, dp2 in dash_poly_pairs:
+#         if Dash.is_already_created(dp1):
+#             dash1 = Dash.get_dash_obj(dp1)
+#             dash1.save_dots([dot])
+#         else:
+#             dash1 = Dash(dp1, [dot])
+#
+#         if Dash.is_already_created(dp2):
+#             dash2 = Dash.get_dash_obj(dp2)
+#             dash2.save_dots([dot])
+#         else:
+#             dash2 = Dash(dp2, [dot])
+#
+#         dash_pairs.append((dash1, dash2))
+#
+#     return dash_pairs
 
 
 def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
@@ -216,93 +261,59 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
 
     all_drawn_lines = []
     poly_line_dict = {}  # id(polygon):centerline
+    line_ep_dict = {}
     dots_tree = STRtree(dots)
+
+    # filter out polygons created by dots; the perimeters of polygons are used to distinguish dot polygons
     polygons_wo_dots = [poly for poly in polygons if len([dot for dot in dots_tree.query(poly) if
                                                           poly.intersects(dot) and poly.length <= max_dot_len]) == 0]
-
-    # plotting non dot polygons
-    # for geom in polygons_wo_dots:
-    #   x,y = geom.exterior.xy # x,y are arrays
-    #   plt.plot(x,y)
 
     polygons_wo_dots_tree = STRtree(polygons_wo_dots)
 
     logging.info('Searching dash polygons around the detected dots')
+    # initial dot and dash object creation
     for p in dots:
         dot = Dot(p)
-        dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
-        if len(dash_poly_pairs) == 0:
-            del Dot.all_dots[id(p)]
-        else:
-            dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
-            dot.save_dash_pairs(dash_pairs)
+        dash_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
+        if len(dash_pairs) == 0:
+            del dot
 
     logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two.
-    # set of dash pairs. Each dash pair is a frozen set of dash polygons;i.e., frozenset([id(poly1), id(poly2)])
-    found_dash_pairs = set()
     dashes_copy = list(Dash.all_dashes.values())
     for dash in dashes_copy:
-        if len(dash.conn_dots) < 2:
-            if id(dash.poly) in poly_line_dict:
-                dash_body_line = poly_line_dict[id(dash.poly)]
-            else:
-                dash_body_line = create_centerline(dash.poly)
-                poly_line_dict[id(dash.poly)] = dash_body_line
-
-            if dash_body_line is not None:
-                endpoints = get_line_endpoints(dash_body_line)
-
+        # TODO: there may be dashes supposed to have more than two dots and having only two dots detected
+        if len(dash.dot_ep_pairs) < 2:
+            if dash.centerline is not None:
                 # filter out the endpoints close to valid dots
                 # because virtual dot is no need at that end
-                endpoints_wo_dots = endpoints.copy()
-                for dot in dash.conn_dots:
-                    min_dist_ep = find_nearest_geom(dot.point, endpoints)
-                    endpoints_wo_dots.remove(min_dist_ep)
+                endpoints_wo_dots = dash.endpoints.copy()
+                for _, ep in dash.dot_ep_pairs:
+                    endpoints_wo_dots.remove(ep)
 
                 # make virtual dots at the extrapolated location
                 # find dashes around the virtual dots
                 for ep in endpoints_wo_dots:
-                    target_p = get_extrapolated_point(dash_body_line, ep)
+                    target_p = get_extrapolated_point(dash.centerline, ep)
                     dot = Dot(target_p)
-                    dash_poly_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict)
+                    dash_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
 
-                    # filter out dash pairs that are already found by another virtual dot
-                    dash_poly_pairs = [dash_poly_pair for dash_poly_pair in dash_poly_pairs
-                                       if not
-                                       (frozenset([id(dash_poly_pair[0]), id(dash_poly_pair[1])]) in found_dash_pairs)]
-
-                    if len(dash_poly_pairs) == 0:
-                        del Dot.all_dots[id(target_p)]  # delete virtual dot element from dict
-                        del dot  # delete virtual dot object itself
-                    else:
-                        found_dash_pairs.update({frozenset([id(dash_poly_pair[0]), id(dash_poly_pair[1])])
-                                             for dash_poly_pair in dash_poly_pairs})
-                        dash_pairs = create_dash_pairs(dot, dash_poly_pairs)  # Dash object is created
-                        dot.save_dash_pairs(dash_pairs)
+                    if len(dash_pairs) == 0:
+                        del dot  # delete virtual dot object
 
     logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
     for dash in Dash.all_dashes.values():
-        if id(dash.poly) in poly_line_dict:
-            dash_body_line = poly_line_dict[id(dash.poly)]
-        else:
-            dash_body_line = create_centerline(dash.poly)
-            poly_line_dict[id(dash.poly)] = dash_body_line
-
-        if dash_body_line is not None:
-            endpoints = get_line_endpoints(dash_body_line)
-
+        if dash.centerline is not None:
             # prepare dash body line to be merged
-            if isinstance(dash_body_line, MultiLineString):
-                lines = list(dash_body_line.geoms)
+            if isinstance(dash.centerline, MultiLineString):
+                lines = list(dash.centerline.geoms)
             else:
-                lines = [dash_body_line]
+                lines = [dash.centerline]
 
             # make the connecting line from dash's endpoint to dot
-            for dot in dash.conn_dots:
-                min_dist_ep = find_nearest_geom(dot.point, endpoints)
-                lines.append(LineString([min_dist_ep, dot.point]))
+            for dot, ep in dash.dot_ep_pairs:
+                lines.append(LineString([ep, dot.point]))
 
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
@@ -313,12 +324,12 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
             # workaround due to shapely.ops.split precision issue
             close_points = get_close_points(mline, outer_image_bbox)
             for p in close_points:
-                dash.conn_dots.append(Dot(p))
+                dash.dot_ep_pairs.append((Dot(p), p))
 
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
-            path_lines = [get_path_line(mline, dot1.point, dot2.point) for dot1, dot2 in
-                          combinations(dash.conn_dots, 2)]
+            path_lines = [get_path_line(mline, pair1[0].point, pair2[0].point) for pair1, pair2 in
+                          combinations(dash.dot_ep_pairs, 2)]
             # filter out drawn lines that are possibly solid lines
             path_lines = [line for line in path_lines
                           if line is not None and line.length < max_dash_line_len]

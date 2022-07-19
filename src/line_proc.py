@@ -13,9 +13,6 @@ from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLI
 import matplotlib.pyplot as plt
 
 
-line_endpoints = {} # id(line): [endpoints], line can be LineString, MultiLineString
-
-
 # get blobs as KeyPoint obj from image
 # cv::KeyPoint attributes : pt, size, etc.
 # image : cv2 image object; don't need to be a binarized image
@@ -90,11 +87,13 @@ def get_shapely_geom(geojson_list):
     return results
 
 
-def create_centerline(geom, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST, min_branch_len=MIN_BRANCH_LEN):
+def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST, min_branch_len=MIN_BRANCH_LEN):
     """
     Create a centerline for a polygon
 
-    :param geom: target polygon that will be converted into line
+    :param poly: target polygon that will be converted into line
+    :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
+            This is to prevent redundant calls of creating centerline of polygon.
     :param buffer: value to simplify polygon
     :param interpolation_distance: the higher value, the less branches from the centerline
     :param min_branch_len: value to prune unnecessary short branches when centerline is created
@@ -102,25 +101,45 @@ def create_centerline(geom, buffer=CENTERLINE_BUFFER, interpolation_distance=INT
         Otherwise, MultiLineString will be returned.
     """
 
-    try:
-        # simplify the polygon to prevent unnecessary branches
-        geom = geom.buffer(buffer, join_style=1)
+    if not isinstance(poly, Polygon):
+        raise TypeError(
+            f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
 
-        centerline_obj = Centerline(geom, interpolation_distance)
+    if id(poly) in poly_line_dict:
+        result_line = poly_line_dict[id(poly)]
+    else:
+        try:
+            # simplify the polygon to prevent unnecessary branches
+            geom = poly.buffer(buffer, join_style=1)
 
-        # merge the centerlines into a single centerline
-        mline = MultiLineString(centerline_obj)
-        result_line = linemerge(mline)
-    except Exception as err:  # possibly TooFewRidgesError
-        logging.error(err, exc_info=True)
-        print_exc()
-        print(err)
-        result_line = None
+            centerline_obj = Centerline(geom, interpolation_distance)
+
+            # merge the centerlines into a single centerline
+            mline = MultiLineString(centerline_obj)
+            result_line = linemerge(mline)
+        except Exception as err:  # possibly TooFewRidgesError
+            logging.error(err, exc_info=True)
+            print_exc()
+            print(err)
+            result_line = None
+
+        poly_line_dict[id(poly)] = result_line
 
     return result_line
 
 
 def get_search_box(point, distance):
+    """
+    Get box polygon around the point
+
+    :param point: Shapely Point object
+    :param distance: distance value representing the distance between center and the line of the box
+    :return: a square-shaped Shapely Polygon object
+    """
+    if not isinstance(point, Point):
+        raise TypeError(
+            f'Inappropriate type: {type(point)} for point whereas a Point is expected')
+
     return box(point.x - distance, point.y - distance, point.x + distance, point.y + distance)
 
 
@@ -136,24 +155,24 @@ def affine_transform (transform, pixel_coordinate):
     return (g_x, g_y)
 
 
-def get_line_endpoints(mline):
+def get_line_endpoints(mline, line_ep_dict=None):
     """
     Get endpoints of MultiLineString except for intersecting points between its LineStrings
     Get endpoints of LineString
 
-    mline: merged line, it can be MultiLineString or LineString
+    :param mline: merged line, it can be MultiLineString or LineString
+    :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
+            This is to prevent redundant calls of get_line_endpoints.
+    :return: a list of Shapely Point objects
     """
 
     if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
         raise TypeError(
             f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
 
-    global line_endpoints  # TODO: if using global is more efficient, then other dictionaries should also be global ?
-
-    if id(mline) in line_endpoints:
-        endpoints = line_endpoints[id(mline)]
+    if id(mline) in line_ep_dict:
+        endpoints = line_ep_dict[id(mline)]
     else:
-        #plot_line(mline)
         if isinstance(mline, MultiLineString):
             intersect_points = []
             for line1, line2 in combinations([line for line in mline], 2):
@@ -167,31 +186,45 @@ def get_line_endpoints(mline):
         else:  # LineString
             endpoints = list(mline.boundary)
 
-        line_endpoints[id(mline)] = endpoints
+        line_ep_dict[id(mline)] = endpoints
 
     return endpoints
 
+
+def get_common_endpoints(endpoints1, endpoints2):
+    endpoints_dict1 = {}
+    endpoints_dict2 = {}
+    for p in endpoints1:
+        endpoints_dict1[id(p)] = p
+    for p in endpoints2:
+        endpoints_dict2[id(p)] = p
+
+    common_endpoints = {k: v for k, v in endpoints_dict1.items() if k in endpoints_dict2}
+
+    return list(common_endpoints.values())
+
+
 # deprecated
-def is_endpoint_inside(mline, sbox):
-    """
-    Check if at least one endpoint of the line derived from the polygon is within
-    the search box.
-
-    mline : target LineString or MultiLineString
-    sbox : search box
-    """
-
-    if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
-        raise TypeError(
-            f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
-    if not isinstance(sbox, Polygon):
-        raise TypeError(f'Inappropriate type: {type(sbox)} for sbox whereas a Polygon is expected')
-
-    endpoints = get_line_endpoints(mline)
-    for p in endpoints:
-        if sbox.contains(p):
-            return True
-    return False
+# def is_endpoint_inside(mline, sbox):
+#     """
+#     Check if at least one endpoint of the line derived from the polygon is within
+#     the search box.
+#
+#     mline : target LineString or MultiLineString
+#     sbox : search box
+#     """
+#
+#     if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
+#         raise TypeError(
+#             f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
+#     if not isinstance(sbox, Polygon):
+#         raise TypeError(f'Inappropriate type: {type(sbox)} for sbox whereas a Polygon is expected')
+#
+#     endpoints = get_line_endpoints(mline)
+#     for p in endpoints:
+#         if sbox.contains(p):
+#             return True
+#     return False
 
 
 def get_extrapolated_point(line, endpoint, dist=DASH_DOT_DIST):
