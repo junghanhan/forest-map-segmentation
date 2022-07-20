@@ -1,10 +1,11 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
-from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, MAX_DASH_LINE_LEN
-from line_proc import get_line_endpoints, create_centerline, get_close_points, \
-    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, get_search_box, \
-    get_common_endpoints
-from shapely.ops import unary_union, linemerge
+from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER
+from line_proc import get_line_endpoints, create_centerline, \
+    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
+    get_common_endpoints, get_close_points
+from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
 from shapely.strtree import STRtree
 import matplotlib.pyplot as plt
@@ -88,6 +89,30 @@ class Dot:
     def __del__(self):
         del Dot.all_dots[id(self.point)]
 
+    # TODO: DASH_SEARCH_BOX_W / 1.9 is a temporary value
+    # TODO: need refactoring
+    def filter_points(self, points, radius=DASH_SEARCH_BOX_W / 1.9):
+        """
+        Filter out points that are near this Dot object except for one point that is the nearest
+            to the Dot object. This function is to get a proper endpoint of a nearby dash polygon.
+
+        :param points: a list of Shapely Point objects
+        :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
+        :return: a Shapely Point object which is the nearest point, a list of filtered Shapely Point objects
+        """
+
+        filtered_points = points.copy()
+        ep_scircle = self.point.buffer(radius)  # endpoint search circle
+        endpoints_in_box = [p for p in points if ep_scircle.contains(p)]
+        # select the nearest endpoint in box as a valid endpoint
+        min_dist_ep = find_nearest_geom(self.point, endpoints_in_box)
+        filtered_points = [fp for fp in filtered_points
+                              if not ep_scircle.contains(fp)]
+        filtered_points.append(min_dist_ep)
+
+        return min_dist_ep, filtered_points
+
+
     def search_dash_polygons(self, strtree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
         """
         Search and saves the dashes on both sides of the dot
@@ -146,20 +171,11 @@ class Dot:
                         # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
                         if not (len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
                             # rule 3: dash polygon's endpoint should be in the search box
-                            filtered_endpoints = endpoints.copy()
                             for p in endpoints:
                                 if sbox.contains(p):
                                     # filter out false endpoints that is assumed to be created
                                     # at branches near the actual endpoint
-                                    # TODO: DASH_SEARCH_BOX_W / 2 is a temporary value
-                                    ep_sbox = get_search_box(self.point, DASH_SEARCH_BOX_W / 2)  # endpoint search box
-                                    endpoints_in_box = [p for p in endpoints if ep_sbox.contains(p)]
-                                    # select the nearest endpoint in box as a valid endpoint
-                                    min_dist_ep = find_nearest_geom(self.point, endpoints_in_box)
-                                    filtered_endpoints = [fp for fp in filtered_endpoints
-                                                          if not ep_sbox.contains(fp)]
-                                    filtered_endpoints.append(min_dist_ep)
-
+                                    min_dist_ep, filtered_endpoints = self.filter_points(endpoints)
                                     temp_dash = (poly, poly_centerline, min_dist_ep, filtered_endpoints)
                                     searched_dashes.append(temp_dash)
                                     break
@@ -239,8 +255,9 @@ class Dot:
 #     return dash_pairs
 
 
-def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
-                             max_dot_len=MAX_DOT_LEN, max_dash_line_len=MAX_DASH_LINE_LEN):
+def extract_dot_dashed_lines(dots, polygons, image_bbox,
+                             max_dot_len=MAX_DOT_LEN, max_dash_line_len=MAX_DASH_LINE_LEN,
+                             image_bbox_buffer=IMAGE_BBOX_BUFFER):
     """
     Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
@@ -251,11 +268,11 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
     :param polygons: all the polygons on the map as shapely Polygons
     :param max_dot_len: maximum length of dot Shapely Polygon; used to ignore dot polygons
         when dash polygons are searched
-    :param outer_image_bbox: outer image bounding box(Shapely LinearRing)
+    :param image_bbox: image bounding box(Shapely LinearRing)
         that will be connected with the lines at the edges of the image
-    :param inner_image_bbox: inner image bounding box(Shapely LinearRing)
-        that will be used to cut the drawn lines connected with the outer image bounding box
-        This is due to the precision issue caused by Shapley
+    :param max_dash_line_len: maximum dash line length
+        This value is used to filter out solid lines which normally longer than dashes
+    :param image_bbox_buffer: the inside buffer value for image bounding box
     :return: connected dot-dashed lines as a Shapely MultiString
     """
 
@@ -315,16 +332,18 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
             for dot, ep in dash.dot_ep_pairs:
                 lines.append(LineString([ep, dot.point]))
 
+            # make virtual Dot objects to draw the lines connecting between dash to image bounding box
+            buffered_image_bbox = image_bbox.buffer(image_bbox_buffer, single_sided=True)
+            # points that intersect with buffered image bounding box
+            close_points = get_close_points(dash.centerline, buffered_image_bbox.interiors[0])
+            for cp in close_points:
+                p_bbox = nearest_points(image_bbox, cp)[0]
+                # create a virtual dot on the image bounding box and register it to dash
+                dash.dot_ep_pairs.append((Dot(p_bbox), cp))
+                lines.append(LineString([cp, p_bbox]))
+
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
-
-            # make additional Dot objects to draw the lines that intersect with image bounding box
-            # these are not actual intersecting points
-            # these are the points on the line CLOSE TO intersecting points with image bounding box
-            # workaround due to shapely.ops.split precision issue
-            close_points = get_close_points(mline, outer_image_bbox)
-            for p in close_points:
-                dash.dot_ep_pairs.append((Dot(p), p))
 
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
@@ -353,9 +372,7 @@ def extract_dot_dashed_lines(dots, polygons, outer_image_bbox, inner_image_bbox,
                     print_exc()
                     print(err)
 
-    # include image bounding lines and split on the intersection points with drawn lines
-    # workaround due to shapely.ops.split precision issue
-    all_drawn_lines.append(inner_image_bbox)
+    all_drawn_lines.append(image_bbox)
     all_drawn_lines = unary_union(all_drawn_lines)
 
     logging.info('Merging all extracted lines')

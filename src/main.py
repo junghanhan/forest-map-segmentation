@@ -4,7 +4,7 @@ from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_l
 from dot_dash import extract_dot_dashed_lines
 from txt_proc import recognize_texts, plot_prediction_result
 from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
-    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, OUTER_IMAGE_BBOX_OFFSET, INNER_IMAGE_BBOX_OFFSET
+    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, IMAGE_BBOX_BUFFER
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
@@ -43,9 +43,8 @@ def main(image_file, input_dir, output_dir):
         geoms = get_shapely_geom(geojson_list)
 
         logging.info('Extracting dot dashed lines')
-        outer_image_bbox = get_image_bbox(image_path, offset=OUTER_IMAGE_BBOX_OFFSET)
-        inner_image_bbox = get_image_bbox(image_path, offset=INNER_IMAGE_BBOX_OFFSET)
-        lines = extract_dot_dashed_lines(blob_points, geoms, outer_image_bbox, inner_image_bbox)
+        image_bbox = get_image_bbox(image_path)
+        lines = extract_dot_dashed_lines(blob_points, geoms, image_bbox)
 
         logging.info('Writing extracted dot dashed lines to Shapefile')
         write_line_shapefile(list(lines), line_shapefile_path)
@@ -89,7 +88,6 @@ def main(image_file, input_dir, output_dir):
 
 if __name__ == '__main__':
     if MULTITHREAD:
-        # multi thread
         from multiprocessing import Pool
 
         with Pool() as pool:

@@ -19,9 +19,8 @@ MAX_DASH_LINE_LEN = 0.0035  # maximum drawn vector dash line length; this is to 
 INTERPOLATION_DIST = 0.00006
 CENTERLINE_BUFFER = 0.00001
 
-# image bounding box offset value; the larger the value, the smaller the size of the image box
-OUTER_IMAGE_BBOX_OFFSET = 0.00004
-INNER_IMAGE_BBOX_OFFSET = 0.00005
+# image bounding box inside buffer value; the larger the value, the bigger buffer inside the image box
+IMAGE_BBOX_BUFFER = -0.00005
 
 EPSG_CODE = 4326
 

@@ -326,6 +326,9 @@ def find_nearest_geom(target, geom_list):
     :return: the nearest Shapely geometric object
     """
 
+    if len(geom_list) == 0:
+        raise Exception("geom_list is empty")
+
     min_dist = float('inf')
     for geom in geom_list:
         dist = target.distance(geom)
@@ -361,8 +364,7 @@ def get_image_bbox(image_path, offset=0):
 
 def get_close_points(line1, line2):
     """
-    Get points on geom1 which are close to the actual intersection points between geom1 and geom2
-    TODO: this is a workaround of shapely.ops.split since shapely.ops.split does not work due to precision issues.
+    Get points on line1 which are close to the actual intersection points between line1 and line2
 
     :param line1: Shapely LineString or MultiLineString object
     :param line2: Shapely LineString or MultiLineString object such as LineString
