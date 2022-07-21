@@ -9,7 +9,7 @@ from shapely.ops import linemerge, nearest_points
 from itertools import combinations
 import math
 import networkx as nx
-from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER
+from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W
 import matplotlib.pyplot as plt
 
 
@@ -392,6 +392,29 @@ def get_close_points(line1, line2):
                 close_points.append(target_p)
 
     return close_points
+
+
+# TODO: DASH_SEARCH_BOX_W / 1.9 is a temporary value
+def filter_geoms(center_point, geoms, radius=DASH_SEARCH_BOX_W / 1.9):
+    """
+    Filter out Shapely geometries that are within a circle with a certain radius centering a point.
+
+    :param center_point: a Shapely Point object that is used as a center of a filtering circle
+    :param geoms: a list of Shapely Point objects
+    :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
+    :return: a list of filtered Shapely Point objects
+    """
+
+    if not isinstance(center_point, Point):
+        TypeError(
+            f'Inappropriate type: {type(center_point)} for center_point whereas a Point is expected')
+
+    filtered_geoms = geoms.copy()
+    ep_scircle = center_point.buffer(radius)  # endpoint search circle
+    filtered_geoms = [fg for fg in filtered_geoms
+                          if not ep_scircle.contains(fg)]
+
+    return filtered_geoms
 
 
 # matplotlib line plot helper function

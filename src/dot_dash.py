@@ -4,7 +4,7 @@ from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAM
     MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
-    get_common_endpoints, get_close_points
+    get_common_endpoints, get_close_points, filter_geoms
 from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
 from shapely.strtree import STRtree
@@ -87,34 +87,12 @@ class Dot:
     def __del__(self):
         del Dot.all_dots[id(self.point)]
 
-    # TODO: DASH_SEARCH_BOX_W / 1.9 is a temporary value
-    def filter_points(self, center_point, points, radius=DASH_SEARCH_BOX_W / 1.9):
-        """
-        Filter out points that are within a circle with a certain radius centering a point.
-        If the center point itself is within the points, it is also filtered out of the list.
-
-        :param center_point: a Shapely Point object that is used as a center of a filtering circle
-        :param points: a list of Shapely Point objects
-        :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
-        :return: a list of filtered Shapely Point objects
-        """
-
-        if not isinstance(center_point, Point):
-            TypeError(
-                f'Inappropriate type: {type(center_point)} for center_point whereas a Point is expected')
-
-        filtered_points = points.copy()
-        ep_scircle = self.point.buffer(radius)  # endpoint search circle
-        filtered_points = [fp for fp in filtered_points
-                              if not ep_scircle.contains(fp)]
-
-        return filtered_points
-
-
     def search_dash_polygons(self, strtree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
         """
         Search and saves the dashes on both sides of the dot
         Returns the pairs of Dash objects
+
+        side effect: Dash objects can be created or updated.
 
         :param strtree: STRTree that contains all polygons except the polygons created by dots
         :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
@@ -178,7 +156,7 @@ class Dot:
 
                                 # filter out false endpoints that is assumed to be created
                                 # at branches near the actual endpoint
-                                filtered_endpoints = self.filter_points(nearest_endpoint, endpoints)
+                                filtered_endpoints = filter_geoms(self.point, endpoints)
                                 filtered_endpoints.append(nearest_endpoint)
 
                                 temp_dash = (poly, poly_centerline, nearest_endpoint, filtered_endpoints)
