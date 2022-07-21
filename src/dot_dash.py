@@ -87,14 +87,14 @@ class Dot:
     def __del__(self):
         del Dot.all_dots[id(self.point)]
 
-    def search_dash_polygons(self, strtree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
+    def search_dash_polygons(self, non_dot_polys_tree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
         """
         Search and saves the dashes on both sides of the dot
         Returns the pairs of Dash objects
 
         side effect: Dash objects can be created or updated.
 
-        :param strtree: STRTree that contains all polygons except the polygons created by dots
+        :param non_dot_polys_tree: STRTree that contains all polygons except the polygons created by dots
         :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
             This is to prevent redundant calls of creating centerline of polygon.
         :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
@@ -130,7 +130,7 @@ class Dot:
 
                 # candidate polygons searched by one search box;
                 # filter out polygons already searched from the other iterations (the other box pairs)
-                candidate_polys = [geom for geom in strtree.query(sbox)
+                candidate_polys = [geom for geom in non_dot_polys_tree.query(sbox)
                                    if geom.intersects(sbox) and not id(geom) in found_dash_polys]
 
                 # filter out false dash polygons based on rules
@@ -170,9 +170,11 @@ class Dot:
                     all_found = False
                     all_searched_dashes.clear()
 
+            # for sbox in search_boxes:
+            #     plt.plot(*sbox.exterior.xy)
             if all_found:
-                for sbox in search_boxes:
-                    plt.plot(*sbox.exterior.xy)
+                # for sbox in search_boxes:
+                #     plt.plot(*sbox.exterior.xy)
 
                 # create dash objects and pair them
                 for poly, centerline, min_dist_ep, endpoints in all_searched_dashes:
@@ -186,6 +188,7 @@ class Dot:
                         dash = Dash(poly, centerline, endpoints)
                         dash.save_dot_ep_pairs([(self, min_dist_ep)])
 
+                    # plt.plot(min_dist_ep.x, min_dist_ep.y, marker="D")
                     found_dashes.append(dash)
 
         # store the created dashes in the dot object
@@ -227,7 +230,7 @@ class Dot:
 #     return dash_pairs
 
 
-def extract_dot_dashed_lines(dots, polygons, image_bbox,
+def extract_dot_dashed_lines(dot_ps, polygons, image_bbox,
                              max_dot_len=MAX_DOT_LEN, max_dash_line_len=MAX_DASH_LINE_LEN,
                              image_bbox_buffer=IMAGE_BBOX_BUFFER):
     """
@@ -236,7 +239,7 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
     instances of Dot and Dash classes.
     TODO: need refactoring and performance optimization
 
-    :param dots: dots as shapely Points
+    :param dot_ps: dots as shapely Points
     :param polygons: all the polygons on the map as shapely Polygons
     :param max_dot_len: maximum length of dot Shapely Polygon; used to ignore dot polygons
         when dash polygons are searched
@@ -251,27 +254,41 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
     all_drawn_lines = []
     poly_line_dict = {}  # id(polygon):centerline
     line_ep_dict = {}
-    dots_tree = STRtree(dots)
+    dot_ps_tree = STRtree(dot_ps)
 
     # filter out polygons created by dots; the perimeters of polygons are used to distinguish dot polygons
-    polygons_wo_dots = [poly for poly in polygons if len([dot for dot in dots_tree.query(poly) if
-                                                          poly.intersects(dot) and poly.length <= max_dot_len]) == 0]
+    dot_ps_to_remove = set()  # {id(Point), }
+    non_dot_polys = [poly for poly in polygons if poly.length > max_dot_len]
 
-    polygons_wo_dots_tree = STRtree(polygons_wo_dots)
+    # for poly in non_dot_polys:
+    #     plt.plot(*poly.exterior.xy)
+
+    # filter out dot points that are within non dot polygons (considered as false dot points)
+    for poly in non_dot_polys:
+        overlapped_dot_ps = dot_ps_tree.query(poly)
+        dot_ps_to_remove.update([id(dot_p) for dot_p in overlapped_dot_ps if poly.contains(dot_p)])
+    dot_ps = [dot_p for dot_p in dot_ps if id(dot_p) not in dot_ps_to_remove]
+
+    # for dot_p in dot_ps:
+    #     plt.plot(dot_p.x, dot_p.y, marker="D")
+
+    non_dot_polys_tree = STRtree(non_dot_polys)
 
     logging.info('Searching dash polygons around the detected dots')
     # initial dot and dash object creation
-    for p in dots:
+    for p in dot_ps:
         dot = Dot(p)
-        dashes = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
+        dashes = dot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
         if len(dashes) == 0:
+            # plt.plot(dot.point.x, dot.point.y, marker="*")
             del dot
 
     logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two.
     dashes_copy = list(Dash.all_dashes.values())
+    vdot_ps = []  # a list of Shapely Point objects representing virtual dots' locations
     for dash in dashes_copy:
-        # TODO: there may be dashes supposed to have more than two dots and having only two dots detected
+        # TODO: there may be dashes that have more than two dots but only two of them detected
         if len(dash.dot_ep_pairs) < 2:
             if dash.centerline is not None:
                 # filter out the endpoints close to valid dots
@@ -280,15 +297,36 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
                 for _, ep in dash.dot_ep_pairs:
                     endpoints_wo_dots.remove(ep)
 
-                # make virtual dots at the extrapolated location
-                # find dashes around the virtual dots
+                # get the locations of virtual dots using extrapolation
                 for ep in endpoints_wo_dots:
-                    target_p = get_extrapolated_point(dash.centerline, ep)
-                    dot = Dot(target_p)
-                    dashes = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
+                    vdot_p = get_extrapolated_point(dash.centerline, ep)
+                    vdot_ps.append(vdot_p)
 
-                    if len(dashes) == 0:
-                        del dot  # delete virtual dot object
+    # make virtual dots
+    redundant_vdot_ps = set()  # {id(Point),}
+    vdots_tree = STRtree(vdot_ps)
+
+    # find out redundant virtual dot points that are too close to the valid dots
+    for dot in Dot.all_dots.values():
+        #plt.plot(dot.point.x, dot.point.y, marker="*")
+        filter_circle = dot.point.buffer(DASH_SEARCH_BOX_W / 1.9)
+        filtered = vdots_tree.query(filter_circle)
+        redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
+
+    # create dot objects of virtual dot points
+    for vdot_p in vdot_ps:
+        # create only the virtual dots that are not redundant
+        if id(vdot_p) not in redundant_vdot_ps:
+            vdot = Dot(vdot_p)
+            dashes = vdot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
+            if len(dashes) == 0:
+                del vdot  # delete virtual dot object
+            else:
+                # filter out redundant virtual dot points that are too close to the dot just created
+                # plt.plot(vdot_p.x, vdot_p.y, marker="*")
+                filter_circle = vdot_p.buffer(DASH_SEARCH_BOX_W / 1.9)
+                filtered = vdots_tree.query(filter_circle)
+                redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
 
     logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
@@ -316,6 +354,8 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
 
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
+
+            #plot_line(mline)
 
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')

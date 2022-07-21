@@ -99,7 +99,7 @@ def main(image_file, input_dir, output_dir):
     # for p in blob_points:
     #     plt.plot(p.x, p.y, marker="o", markerfacecolor="red")
     #
-    # # plot lines
+    # plot lines
     plot_line(lines)
     #
     # # plot polygons
