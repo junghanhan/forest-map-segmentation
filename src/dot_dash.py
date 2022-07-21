@@ -73,7 +73,7 @@ class Dot:
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return Dot.all_dots[id(point)]
 
-    def __init__(self, point, dash_pairs=[]):
+    def __init__(self, point, dashes=[]):
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
@@ -83,34 +83,32 @@ class Dot:
         Dot.all_dots[id(point)] = self
         self.point = point
         self.dashes = {}
-        self.dash_pairs = []  # [(Dash object, Dash object), ]
-        self.save_dash_pairs(dash_pairs)
 
     def __del__(self):
         del Dot.all_dots[id(self.point)]
 
     # TODO: DASH_SEARCH_BOX_W / 1.9 is a temporary value
-    # TODO: need refactoring
-    def filter_points(self, points, radius=DASH_SEARCH_BOX_W / 1.9):
+    def filter_points(self, center_point, points, radius=DASH_SEARCH_BOX_W / 1.9):
         """
-        Filter out points that are near this Dot object except for one point that is the nearest
-            to the Dot object. This function is to get a proper endpoint of a nearby dash polygon.
+        Filter out points that are within a circle with a certain radius centering a point.
+        If the center point itself is within the points, it is also filtered out of the list.
 
+        :param center_point: a Shapely Point object that is used as a center of a filtering circle
         :param points: a list of Shapely Point objects
         :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
-        :return: a Shapely Point object which is the nearest point, a list of filtered Shapely Point objects
+        :return: a list of filtered Shapely Point objects
         """
+
+        if not isinstance(center_point, Point):
+            TypeError(
+                f'Inappropriate type: {type(center_point)} for center_point whereas a Point is expected')
 
         filtered_points = points.copy()
         ep_scircle = self.point.buffer(radius)  # endpoint search circle
-        endpoints_in_box = [p for p in points if ep_scircle.contains(p)]
-        # select the nearest endpoint in box as a valid endpoint
-        min_dist_ep = find_nearest_geom(self.point, endpoints_in_box)
         filtered_points = [fp for fp in filtered_points
                               if not ep_scircle.contains(fp)]
-        filtered_points.append(min_dist_ep)
 
-        return min_dist_ep, filtered_points
+        return filtered_points
 
 
     def search_dash_polygons(self, strtree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
@@ -135,8 +133,8 @@ class Dot:
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
 
-        found_dash_polys = {}
-        dash_pairs = []
+        found_dash_polys = {}  # the found dash polygons throughout the entire search process
+        found_dashes = []  # the Dash objects created by the search process
 
         default_boxes = get_dash_search_boxes(self.point)
 
@@ -145,19 +143,21 @@ class Dot:
             search_boxes = [affinity.rotate(sbox, d, origin=self.point) for sbox in default_boxes]
 
             all_found = True  # True when all search boxes found exactly one polygon each
-            all_searched_dashes = []  # the polygons searched by all the search boxes rotated with a certain degree
+            all_searched_dashes = []  # the polygons searched by this pair of search boxes
 
             # handle each search box one at a time
             for sbox in search_boxes:
                 if not all_found:
                     continue
 
-                # searched polygons by one search box; filter out that is already searched by the other end's search box
+                # candidate polygons searched by one search box;
+                # filter out polygons already searched from the other iterations (the other box pairs)
                 candidate_polys = [geom for geom in strtree.query(sbox)
                                    if geom.intersects(sbox) and not id(geom) in found_dash_polys]
 
                 # filter out false dash polygons based on rules
-                searched_dashes = []  # [(polygon, centerline, endpoints)]
+                # dashes searched in a box; [(polygon, centerline, endpoints)]
+                searched_dashes = []
                 for poly in candidate_polys:
                     # rule 1: dash polygon's perimeter should long enough
                     if poly.length > max_dot_len:
@@ -171,28 +171,32 @@ class Dot:
                         # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
                         if not (len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
                             # rule 3: dash polygon's endpoint should be in the search box
-                            for p in endpoints:
-                                if sbox.contains(p):
-                                    # filter out false endpoints that is assumed to be created
-                                    # at branches near the actual endpoint
-                                    min_dist_ep, filtered_endpoints = self.filter_points(endpoints)
-                                    temp_dash = (poly, poly_centerline, min_dist_ep, filtered_endpoints)
-                                    searched_dashes.append(temp_dash)
-                                    break
+                            endpoints_in_sbox = [ep for ep in endpoints if sbox.contains(ep)]
+                            if len(endpoints_in_sbox) > 0:
+                                # find the nearest endpoint
+                                nearest_endpoint = find_nearest_geom(self.point, endpoints_in_sbox)
+
+                                # filter out false endpoints that is assumed to be created
+                                # at branches near the actual endpoint
+                                filtered_endpoints = self.filter_points(nearest_endpoint, endpoints)
+                                filtered_endpoints.append(nearest_endpoint)
+
+                                temp_dash = (poly, poly_centerline, nearest_endpoint, filtered_endpoints)
+                                searched_dashes.append(temp_dash)
 
                 # rule 4: one search box should find only one dash
-                if len(searched_dashes) == 1 and not searched_dashes[0] in all_searched_dashes:
+                # however, the dashes found by each box can be the same dash
+                if len(searched_dashes) == 1:
                     all_searched_dashes.extend(searched_dashes)
                 else:
                     all_found = False
                     all_searched_dashes.clear()
 
             if all_found:
-                if len(all_searched_dashes) != 2:
-                    raise Exception("all_searched_dashes does not contain 2 dashes")
+                for sbox in search_boxes:
+                    plt.plot(*sbox.exterior.xy)
 
                 # create dash objects and pair them
-                dash_pair = tuple()
                 for poly, centerline, min_dist_ep, endpoints in all_searched_dashes:
                     found_dash_polys[id(poly)] = poly
                     if Dash.is_already_created(poly):
@@ -204,23 +208,13 @@ class Dot:
                         dash = Dash(poly, centerline, endpoints)
                         dash.save_dot_ep_pairs([(self, min_dist_ep)])
 
-                    dash_pair += (dash,)
+                    found_dashes.append(dash)
 
-                dash_pairs.append(dash_pair)
+        # store the created dashes in the dot object
+        for dash in found_dashes:
+            self.dashes[id(dash)] = dash
 
-        self.save_dash_pairs(dash_pairs)
-
-        return dash_pairs
-
-    def save_dash_pairs(self, dash_pairs):
-        for dash_pair in dash_pairs:
-            for dash in dash_pair:
-                if not isinstance(dash, Dash):
-                    raise TypeError(f'Inappropriate type: {type(dash)} for dash whereas a Dash is expected')
-                if dash in self.dashes:
-                    raise Exception("The dash is already in this dot")
-                self.dashes[id(dash)] = dash
-            self.dash_pairs.append(dash_pair)
+        return found_dashes
 
 
 # Helper functions related to Dot, Dash object
@@ -291,8 +285,8 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
     # initial dot and dash object creation
     for p in dots:
         dot = Dot(p)
-        dash_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
-        if len(dash_pairs) == 0:
+        dashes = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
+        if len(dashes) == 0:
             del dot
 
     logging.info('Making virtual dots and searching dash polygons around them')
@@ -313,9 +307,9 @@ def extract_dot_dashed_lines(dots, polygons, image_bbox,
                 for ep in endpoints_wo_dots:
                     target_p = get_extrapolated_point(dash.centerline, ep)
                     dot = Dot(target_p)
-                    dash_pairs = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
+                    dashes = dot.search_dash_polygons(polygons_wo_dots_tree, poly_line_dict, line_ep_dict)
 
-                    if len(dash_pairs) == 0:
+                    if len(dashes) == 0:
                         del dot  # delete virtual dot object
 
     logging.info('Extracting the lines from dots and dash polygons')
