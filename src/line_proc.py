@@ -394,8 +394,7 @@ def get_close_points(line1, line2):
     return close_points
 
 
-# TODO: DASH_SEARCH_BOX_W / 1.9 is a temporary value
-def filter_geoms(center_point, geoms, radius=DASH_SEARCH_BOX_W / 1.9):
+def filter_geoms(center_point, geoms, radius):
     """
     Filter out Shapely geometries that are within a circle with a certain radius centering a point.
 
@@ -411,6 +410,7 @@ def filter_geoms(center_point, geoms, radius=DASH_SEARCH_BOX_W / 1.9):
 
     filtered_geoms = geoms.copy()
     ep_scircle = center_point.buffer(radius)  # endpoint search circle
+    # plt.plot(*ep_scircle.exterior.xy)
     filtered_geoms = [fg for fg in filtered_geoms
                           if not ep_scircle.contains(fg)]
 
