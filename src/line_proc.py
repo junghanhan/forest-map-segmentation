@@ -9,7 +9,8 @@ from shapely.ops import linemerge, nearest_points
 from itertools import combinations
 import math
 import networkx as nx
-from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W
+from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
+    MIN_BLOB_AREA, MAX_BLOB_AREA
 import matplotlib.pyplot as plt
 
 
@@ -17,7 +18,7 @@ import matplotlib.pyplot as plt
 # cv::KeyPoint attributes : pt, size, etc.
 # image : cv2 image object; don't need to be a binarized image
 # because cv2.SimpleBlobDetector itself binarzes the input image
-def get_blobs(image, min_blob_area=20, max_blob_area=100):
+def get_blobs(image, min_blob_area=MIN_BLOB_AREA, max_blob_area=MAX_BLOB_AREA):
     params = cv2.SimpleBlobDetector_Params()
     params.filterByArea = True
     params.minArea = min_blob_area
@@ -38,7 +39,7 @@ def get_dot_points(image_path):
     img = cv2.imread(image_path)
 
     # detecting blobs
-    blob_keypoints = get_blobs(img, max_blob_area=60)
+    blob_keypoints = get_blobs(img)
 
     # converting the pixel coordinates of blob into geospatial coordinates
     blob_px_coords = []

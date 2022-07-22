@@ -13,6 +13,8 @@ VDOT_FILTER_R = 0.0002
 # the dots are normally merged into the near dash
 #DASH_DOT_DIST = 0.0001
 DASH_DOT_DIST = 0.00007
+MIN_BLOB_AREA = 20  # openCV blob detection minimum area
+MAX_BLOB_AREA = 140  # openCV blob detection maximum area
 MAX_DOT_LEN = 0.0005  # maximum dot polygon parameter
 MIN_BRANCH_LEN = 0.00005  # minimum branch length that will be regarded as a valid branch of a dash
 MAX_SWAMP_SYMBOL_LEN = 0.0025  # swamp symbol polygon's maximum length

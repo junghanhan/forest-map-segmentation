@@ -280,6 +280,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     for dash in dashes_copy:
         # TODO: need to come up with a way to determine if a dash has an endpoint without dot associated
         if dash.centerline is not None:
+            # plot_line(dash.centerline)
             # filter out the endpoints close to valid dots
             # because virtual dot is no need at that end
             endpoints_wo_dots = dash.endpoints.copy()
@@ -292,6 +293,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
             for ep in endpoints_wo_dots:
                 vdot_p = get_extrapolated_point(dash.centerline, ep)
                 vdot_ps.append(vdot_p)
+                # plt.plot(vdot_p.x, vdot_p.y, marker="*")
 
     # make virtual dots
     redundant_vdot_ps = set()  # {id(Point),}
@@ -299,11 +301,11 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
     # find out redundant virtual dot points that are too close to the valid dots
     for dot in Dot.all_dots.values():
-        # plt.plot(dot.point.x, dot.point.y, marker="*")
         filter_circle = dot.point.buffer(VDOT_FILTER_R)
-        plt.plot(*filter_circle.exterior.xy)
         filtered = vdots_tree.query(filter_circle)
         redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
+        # plt.plot(dot.point.x, dot.point.y, marker="o")
+        # plt.plot(*filter_circle.exterior.xy)
 
     # create dot objects of virtual dot points
     for vdot_p in vdot_ps:
