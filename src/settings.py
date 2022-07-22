@@ -6,6 +6,7 @@ import os
 DASH_SEARCH_BOX_W = 0.0004 * 2
 DASH_SEARCH_BOX_H = 0.00007 * 2
 ENDPOINT_FILTER_R = 0.00014  # endpoint filter radius
+VDOT_FILTER_R = 0.0002
 
 # the distance between dash and dot; used to place virtual dots
 # should be smaller than actual distance cause when the dots are not detected,

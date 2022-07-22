@@ -1,7 +1,7 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms
@@ -300,7 +300,8 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     # find out redundant virtual dot points that are too close to the valid dots
     for dot in Dot.all_dots.values():
         # plt.plot(dot.point.x, dot.point.y, marker="*")
-        filter_circle = dot.point.buffer(DASH_SEARCH_BOX_W / 1.9)
+        filter_circle = dot.point.buffer(VDOT_FILTER_R)
+        plt.plot(*filter_circle.exterior.xy)
         filtered = vdots_tree.query(filter_circle)
         redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
 
@@ -311,12 +312,13 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
             vdot = Dot(vdot_p)
             dashes = vdot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
             if len(dashes) == 0:
+                # plt.plot(vdot_p.x, vdot_p.y, marker="x")
                 del Dot.all_dots[id(vdot.point)]
                 del vdot  # delete virtual dot object
             else:
                 # filter out redundant virtual dot points that are too close to the dot just created
                 # plt.plot(vdot_p.x, vdot_p.y, marker="*")
-                filter_circle = vdot_p.buffer(DASH_SEARCH_BOX_W / 1.9)
+                filter_circle = vdot_p.buffer(VDOT_FILTER_R)
                 filtered = vdots_tree.query(filter_circle)
                 redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
 
