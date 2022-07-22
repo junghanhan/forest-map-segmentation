@@ -107,7 +107,8 @@ class Dot:
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
 
-        found_dash_polys = {}  # the found dash polygons throughout the entire search process
+        # the dash polygon and endpoint pairs found in the search process
+        found_poly_ep_pairs = set()  # elements: f'{str(id(Polygon))}{str(id(Point))}'
         found_dashes = []  # the Dash objects created by the search process
 
         default_boxes = get_dash_search_boxes(self.point)
@@ -125,9 +126,8 @@ class Dot:
                     continue
 
                 # candidate polygons searched by one search box;
-                # filter out polygons already searched from the other iterations (the other box pairs)
                 candidate_polys = [geom for geom in non_dot_polys_tree.query(sbox)
-                                   if geom.intersects(sbox) and not id(geom) in found_dash_polys]
+                                   if geom.intersects(sbox)]
 
                 # filter out false dash polygons based on rules
                 # dashes searched in a box; [(polygon, centerline, endpoints)]
@@ -145,17 +145,19 @@ class Dot:
                         # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
                         if not (len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
                             # rule 3: dash polygon's endpoint should be in the search box
-                            endpoints_in_sbox = [ep for ep in endpoints if sbox.contains(ep)]
+                            tree = STRtree(endpoints)
+                            endpoints_in_sbox = tree.query(sbox)
+                            endpoints_in_sbox = [ep for ep in endpoints_in_sbox if sbox.contains(ep)]
                             if len(endpoints_in_sbox) > 0:
                                 # find the nearest endpoint
-                                nearest_endpoint = find_nearest_geom(self.point, endpoints_in_sbox)
+                                target_ep = find_nearest_geom(self.point, endpoints_in_sbox)
 
                                 # filter out false endpoints that is assumed to be created
                                 # at branches near the actual endpoint
-                                filtered_endpoints = filter_geoms(nearest_endpoint, endpoints, ENDPOINT_FILTER_R)
-                                filtered_endpoints.append(nearest_endpoint)
+                                filtered_endpoints = filter_geoms(target_ep, endpoints, ENDPOINT_FILTER_R)
+                                filtered_endpoints.append(target_ep)
 
-                                temp_dash = (poly, poly_centerline, nearest_endpoint, filtered_endpoints)
+                                temp_dash = (poly, poly_centerline, target_ep, filtered_endpoints)
                                 searched_dashes.append(temp_dash)
 
                 # rule 4: one search box should find only one dash
@@ -173,23 +175,27 @@ class Dot:
                 #     plt.plot(*sbox.exterior.xy)
 
                 # create dash objects and pair them
-                for poly, centerline, min_dist_ep, endpoints in all_searched_dashes:
-                    found_dash_polys[id(poly)] = poly
-                    if Dash.is_already_created(poly):
-                        dash = Dash.get_dash_obj(poly)
-                        dash.save_dot_ep_pairs([(self, min_dist_ep)])
-                        # if dash object has already made by other dots, then store only the common endpoints
-                        dash.endpoints = get_common_endpoints(dash.endpoints, endpoints)
-                    else:
-                        dash = Dash(poly, centerline, endpoints)
-                        dash.save_dot_ep_pairs([(self, min_dist_ep)])
+                for poly, centerline, target_ep, endpoints in all_searched_dashes:
+                    poly_ep_id = f'{str(id(poly))}{str(id(target_ep))}'
 
-                    # plt.plot(min_dist_ep.x, min_dist_ep.y, marker="D")
-                    found_dashes.append(dash)
+                    # create or update dash object only if it is a new polygon-endpoint pair
+                    if poly_ep_id not in found_poly_ep_pairs:
+                        found_poly_ep_pairs.add(poly_ep_id)
 
-        # store the created dashes in the dot object
-        for dash in found_dashes:
-            self.dashes[id(dash)] = dash
+                        if Dash.is_already_created(poly):
+                            dash = Dash.get_dash_obj(poly)
+                            dash.save_dot_ep_pairs([(self, target_ep)])
+                            # if dash object has already made by other dots, then store only the common endpoints
+                            dash.endpoints = get_common_endpoints(dash.endpoints, endpoints)
+                        else:
+                            dash = Dash(poly, centerline, endpoints)
+                            dash.save_dot_ep_pairs([(self, target_ep)])
+
+                        # plt.plot(min_dist_ep.x, min_dist_ep.y, marker="D")
+                        found_dashes.append(dash)
+
+                        # store the created dashes in the dot object
+                        self.dashes[id(poly)] = dash
 
         return found_dashes
 
