@@ -84,9 +84,6 @@ class Dot:
         self.point = point
         self.dashes = {}
 
-    def __del__(self):
-        del Dot.all_dots[id(self.point)]
-
     def search_dash_polygons(self, non_dot_polys_tree, poly_line_dict, line_ep_dict, step_degree=20, max_dot_len=MAX_DOT_LEN):
         """
         Search and saves the dashes on both sides of the dot
@@ -280,7 +277,8 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox,
         dot = Dot(p)
         dashes = dot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
         if len(dashes) == 0:
-            # plt.plot(dot.point.x, dot.point.y, marker="*")
+            # plt.plot(dot.point.x, dot.point.y, marker="D")
+            del Dot.all_dots[id(dot.point)]
             del dot
 
     logging.info('Making virtual dots and searching dash polygons around them')
@@ -308,7 +306,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox,
 
     # find out redundant virtual dot points that are too close to the valid dots
     for dot in Dot.all_dots.values():
-        #plt.plot(dot.point.x, dot.point.y, marker="*")
+        # plt.plot(dot.point.x, dot.point.y, marker="*")
         filter_circle = dot.point.buffer(DASH_SEARCH_BOX_W / 1.9)
         filtered = vdots_tree.query(filter_circle)
         redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
@@ -320,6 +318,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox,
             vdot = Dot(vdot_p)
             dashes = vdot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
             if len(dashes) == 0:
+                del Dot.all_dots[id(vdot.point)]
                 del vdot  # delete virtual dot object
             else:
                 # filter out redundant virtual dot points that are too close to the dot just created
@@ -355,7 +354,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox,
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
 
-            #plot_line(mline)
+            # plot_line(mline)
 
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
