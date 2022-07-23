@@ -1,7 +1,7 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms
@@ -83,6 +83,7 @@ class Dot:
         Dot.all_dots[id(point)] = self
         self.point = point
         self.dashes = {}
+
 
     def search_dash_polygons(self, non_dot_polys_tree, poly_line_dict, line_ep_dict, step_degree=20):
         """
@@ -241,8 +242,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
     :param dot_ps: dots as shapely Points
     :param polygons: all the polygons on the map as shapely Polygons
-    :param max_dot_len: maximum length of dot Shapely Polygon; used to ignore dot polygons
-        when dash polygons are searched
+    :param image_bbox: image bounding box as a Shapely LinearRing object
     :return: connected dot-dashed lines as a Shapely MultiString
     """
 
@@ -361,8 +361,14 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
-            path_lines = [get_path_line(mline, pair1[0].point, pair2[0].point) for pair1, pair2 in
-                          combinations(dash.dot_ep_pairs, 2)]
+            path_lines = []
+            for pair1, pair2 in combinations(dash.dot_ep_pairs, 2):
+                # if the points are too far away from each other, it is likely a solid line in between
+                if pair1[0].point.distance(pair2[0].point) < MAX_P2P_DISTANCE:
+                    path_line = get_path_line(mline, pair1[0].point, pair2[0].point)
+                    path_lines.append(path_line)
+
+
             # filter out drawn lines that are possibly solid lines
             path_lines = [line for line in path_lines
                           if line is not None and line.length < MAX_DASH_LINE_LEN]

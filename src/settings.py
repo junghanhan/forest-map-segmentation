@@ -19,6 +19,7 @@ MAX_DOT_LEN = 0.0005  # maximum dot polygon parameter
 MIN_BRANCH_LEN = 0.00005  # minimum branch length that will be regarded as a valid branch of a dash
 MAX_SWAMP_SYMBOL_LEN = 0.0025  # swamp symbol polygon's maximum length
 MAX_DASH_LINE_LEN = 0.0035  # maximum drawn vector dash line length; this is to filter out the lines drawn on solid lines
+MAX_P2P_DISTANCE = 0.003  # maximum point to point distance with a dash in between
 
 # centerline creation related constants
 INTERPOLATION_DIST = 0.00006
