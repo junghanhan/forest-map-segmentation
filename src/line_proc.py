@@ -9,7 +9,8 @@ from shapely.ops import linemerge, nearest_points
 from itertools import combinations
 import math
 import networkx as nx
-from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER
+from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
+    MIN_BLOB_AREA, MAX_BLOB_AREA
 import matplotlib.pyplot as plt
 
 
@@ -17,7 +18,7 @@ import matplotlib.pyplot as plt
 # cv::KeyPoint attributes : pt, size, etc.
 # image : cv2 image object; don't need to be a binarized image
 # because cv2.SimpleBlobDetector itself binarzes the input image
-def get_blobs(image, min_blob_area=20, max_blob_area=100):
+def get_blobs(image, min_blob_area=MIN_BLOB_AREA, max_blob_area=MAX_BLOB_AREA):
     params = cv2.SimpleBlobDetector_Params()
     params.filterByArea = True
     params.minArea = min_blob_area
@@ -38,7 +39,7 @@ def get_dot_points(image_path):
     img = cv2.imread(image_path)
 
     # detecting blobs
-    blob_keypoints = get_blobs(img, max_blob_area=60)
+    blob_keypoints = get_blobs(img)
 
     # converting the pixel coordinates of blob into geospatial coordinates
     blob_px_coords = []
@@ -392,6 +393,29 @@ def get_close_points(line1, line2):
                 close_points.append(target_p)
 
     return close_points
+
+
+def filter_geoms(center_point, geoms, radius):
+    """
+    Filter out Shapely geometries that are within a circle with a certain radius centering a point.
+
+    :param center_point: a Shapely Point object that is used as a center of a filtering circle
+    :param geoms: a list of Shapely Point objects
+    :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
+    :return: a list of filtered Shapely Point objects
+    """
+
+    if not isinstance(center_point, Point):
+        TypeError(
+            f'Inappropriate type: {type(center_point)} for center_point whereas a Point is expected')
+
+    filtered_geoms = geoms.copy()
+    ep_scircle = center_point.buffer(radius)  # endpoint search circle
+    # plt.plot(*ep_scircle.exterior.xy)
+    filtered_geoms = [fg for fg in filtered_geoms
+                          if not ep_scircle.contains(fg)]
+
+    return filtered_geoms
 
 
 # matplotlib line plot helper function

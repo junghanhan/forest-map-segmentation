@@ -22,7 +22,7 @@ def main(image_file, input_dir, output_dir):
     logfile_path = os.path.join(output_dir, f'{image_file.split(".")[0]}.txt')
 
     logging.basicConfig(filename=logfile_path,
-                        level=logging.DEBUG,
+                        level=logging.INFO,
                         format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
                         filemode='w')
 

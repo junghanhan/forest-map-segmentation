@@ -5,15 +5,21 @@ import os
 # DASH_SEARCH_BOX_H = 0.00005 * 2
 DASH_SEARCH_BOX_W = 0.0004 * 2
 DASH_SEARCH_BOX_H = 0.00007 * 2
+ENDPOINT_FILTER_R = 0.00014  # endpoint filter radius
+VDOT_FILTER_R = 0.0002
+
 # the distance between dash and dot; used to place virtual dots
 # should be smaller than actual distance cause when the dots are not detected,
 # the dots are normally merged into the near dash
 #DASH_DOT_DIST = 0.0001
 DASH_DOT_DIST = 0.00007
+MIN_BLOB_AREA = 20  # openCV blob detection minimum area
+MAX_BLOB_AREA = 140  # openCV blob detection maximum area
 MAX_DOT_LEN = 0.0005  # maximum dot polygon parameter
 MIN_BRANCH_LEN = 0.00005  # minimum branch length that will be regarded as a valid branch of a dash
 MAX_SWAMP_SYMBOL_LEN = 0.0025  # swamp symbol polygon's maximum length
 MAX_DASH_LINE_LEN = 0.0035  # maximum drawn vector dash line length; this is to filter out the lines drawn on solid lines
+MAX_P2P_DISTANCE = 0.003  # maximum point to point distance with a dash in between
 
 # centerline creation related constants
 INTERPOLATION_DIST = 0.00006
