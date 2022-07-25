@@ -24,6 +24,7 @@ MAX_P2P_DISTANCE = 0.003  # maximum point to point distance with a dash in betwe
 # centerline creation related constants
 INTERPOLATION_DIST = 0.00006
 CENTERLINE_BUFFER = 0.00001
+SIMPLIFY_TOLERANCE = 0.00001
 
 # image bounding box inside buffer value; the larger the value, the bigger buffer inside the image box
 IMAGE_BBOX_BUFFER = -0.00005
