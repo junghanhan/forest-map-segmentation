@@ -431,10 +431,12 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
 
             # filter out drawn lines that are possibly solid lines
+            logging.info('Filtering out long lines')
             path_lines = [line for line in path_lines
                           if line is not None and line.length < MAX_DASH_LINE_LEN]
 
             if len(path_lines) > 0:
+                logging.info('Adding extracted dot dash lines')
                 # TODO: temporary exception handling for debugging purpose
                 try:
                     dash_line = unary_union(path_lines)
@@ -453,6 +455,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
                     print_exc()
                     print(err)
 
+    logging.info('Adding image bounding lines')
     all_drawn_lines.append(image_bbox)
     all_drawn_lines = unary_union(all_drawn_lines)
 
