@@ -129,19 +129,20 @@ def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, inter
     return result_line
 
 
-def get_search_box(point, distance):
+def get_search_box(point, width, height):
     """
     Get box polygon around the point
 
     :param point: Shapely Point object
-    :param distance: distance value representing the distance between center and the line of the box
+    :param width: width of the returned box
+    :param height: height of the returned box
     :return: a square-shaped Shapely Polygon object
     """
     if not isinstance(point, Point):
         raise TypeError(
             f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
-    return box(point.x - distance, point.y - distance, point.x + distance, point.y + distance)
+    return box(point.x - width / 2, point.y - height / 2, point.x + width / 2, point.y + height / 2)
 
 
 def affine_transform (transform, pixel_coordinate):

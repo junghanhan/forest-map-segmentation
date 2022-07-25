@@ -4,7 +4,7 @@ from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAM
     MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
-    get_common_endpoints, get_close_points, filter_geoms
+    get_common_endpoints, get_close_points, filter_geoms, get_search_box
 from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
 from shapely.strtree import STRtree
@@ -73,7 +73,7 @@ class Dot:
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return Dot.all_dots[id(point)]
 
-    def __init__(self, point, dashes=[]):
+    def __init__(self, point):
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
@@ -84,11 +84,11 @@ class Dot:
         self.point = point
         self.dashes = {}
 
-
-    def search_dash_polygons(self, non_dot_polys_tree, poly_line_dict, line_ep_dict, step_degree=20):
+    def search_dashes(self, non_dot_polys_tree, poly_line_dict, line_ep_dict,
+                      step_degree=20, sbox_w=DASH_SEARCH_BOX_W, sbox_h=DASH_SEARCH_BOX_H):
         """
         Search and saves the dashes on both sides of the dot
-        Returns the pairs of Dash objects
+        Returns the searched Dash objects
 
         side effect: Dash objects can be created or updated.
 
@@ -98,12 +98,14 @@ class Dot:
         :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
             This is to prevent redundant calls of get_line_endpoints.
         :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
-        :return: a list of dash pairs. [(Dash object, Dash object), ]
+        :param sbox_h: height of dash search box
+        :param sbox_w: width of dash search box
+        :return: a list of dash objects
         """
 
         # distance: assumed distance from dot to dash (2*distance = search box width)
         # buffer: search buffer (2*buffer = search box height)
-        def get_dash_search_boxes(dot, width=DASH_SEARCH_BOX_W, height=DASH_SEARCH_BOX_H):
+        def get_dash_search_boxes(dot, width=sbox_w, height=sbox_h):
             box1 = box(dot.x - width / 2, dot.y - height / 2, dot.x, dot.y + height / 2)
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
@@ -126,7 +128,7 @@ class Dot:
                 if not all_found:
                     continue
 
-                # candidate polygons searched by one search box;
+                # candidate polygons searched by one search box
                 candidate_polys = [geom for geom in non_dot_polys_tree.query(sbox)
                                    if geom.intersects(sbox)]
 
@@ -199,6 +201,63 @@ class Dot:
                         self.dashes[id(poly)] = dash
 
         return found_dashes
+
+    def search_additional_dashes(self, non_dot_polys_tree, step_degree=20,
+                                 sbox_w=DASH_SEARCH_BOX_W / 2, sbox_h=DASH_SEARCH_BOX_H / 2):
+        """
+        Search and saves additional dashes around the dot.
+        Only the polygons that are already detected as dashes by other dots are searched.
+        Returns the additionally searched and updated Dash objects
+
+        side effect: Dash objects can be updated.
+
+        :param non_dot_polys_tree: STRTree that contains all polygons except the polygons created by dots
+        :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
+        :param sbox_h: height of dash search box
+        :param sbox_w: width of dash search box
+        :return: a list of updated dash objects
+        """
+
+        default_box = get_search_box(self.point, sbox_w, sbox_h)
+        updated_dashes = []
+
+        # rotate the search box to find the nearby ADDITIONAL dashes
+        for d in range(0, 180, step_degree):
+            sbox = affinity.rotate(default_box, d, origin=self.point)
+
+            # candidate polygons searched by the search box
+            # filter out polygons that are already associated with this dot
+            # filter out polygons that are not created as a Dash object before
+            searched_polys = [geom for geom in non_dot_polys_tree.query(sbox)
+                               if geom.intersects(sbox)
+                               and id(geom) not in self.dashes
+                               and id(geom) in Dash.all_dashes]
+
+            # associate the dash object with this dot
+            for poly in searched_polys:
+                dash = Dash.get_dash_obj(poly)
+                _, contact_point = nearest_points(self.point, dash.centerline)  # contact point on the centerline
+
+                # update the dash
+                dash.save_dot_ep_pairs([(self, contact_point)])
+
+                # store the updated dash in the dot object
+                self.dashes[id(poly)] = dash
+
+                updated_dashes.append(dash)
+
+        return updated_dashes
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Helper functions related to Dot, Dash object
@@ -273,11 +332,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     # initial dot and dash object creation
     for p in dot_ps:
         dot = Dot(p)
-        dashes = dot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
-        if len(dashes) == 0:
-            # plt.plot(dot.point.x, dot.point.y, marker="D")
-            del Dot.all_dots[id(dot.point)]
-            del dot
+        dashes = dot.search_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
 
     logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two.
@@ -318,7 +373,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
         # create only the virtual dots that are not redundant
         if id(vdot_p) not in redundant_vdot_ps:
             vdot = Dot(vdot_p)
-            dashes = vdot.search_dash_polygons(non_dot_polys_tree, poly_line_dict, line_ep_dict)
+            dashes = vdot.search_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
             if len(dashes) == 0:
                 # plt.plot(vdot_p.x, vdot_p.y, marker="x")
                 del Dot.all_dots[id(vdot.point)]
@@ -329,6 +384,10 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
                 filter_circle = vdot_p.buffer(VDOT_FILTER_R)
                 filtered = vdots_tree.query(filter_circle)
                 redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
+
+    # search and associate additional dashes
+    for dot in Dot.all_dots.values():
+        dot.search_additional_dashes(non_dot_polys_tree)
 
     logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
@@ -356,6 +415,8 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
             # merged line with the dash body line and connecting line to dots
             mline = linemerge(lines)
+            # to split lines at every intersection; this is to create intersection vertices in graph
+            mline = unary_union(mline)
 
             # plot_line(mline)
 
