@@ -203,7 +203,7 @@ class Dot:
         return found_dashes
 
     def search_additional_dashes(self, non_dot_polys_tree, step_degree=SEARCH_STEP_DEGREE,
-                                 sbox_w=DASH_SEARCH_BOX_W / 2, sbox_h=DASH_SEARCH_BOX_H / 2):
+                                 sbox_w=DASH_SEARCH_BOX_W / 1.5, sbox_h=DASH_SEARCH_BOX_H / 1.5):
         """
         Search and saves additional dashes around the dot.
         Only the polygons that are already detected as dashes by other dots are searched.
@@ -224,6 +224,7 @@ class Dot:
         # rotate the search box to find the nearby ADDITIONAL dashes
         for d in range(0, 180, step_degree):
             sbox = affinity.rotate(default_box, d, origin=self.point)
+            plt.plot(*sbox.exterior.xy)
 
             # candidate polygons searched by the search box
             # filter out polygons that are already associated with this dot
@@ -232,6 +233,9 @@ class Dot:
                                if geom.intersects(sbox)
                                and id(geom) not in self.dashes
                                and id(geom) in Dash.all_dashes]
+
+            for poly in searched_polys:
+                plt.plot(*poly.exterior.xy)
 
             # associate the dash object with this dot
             for poly in searched_polys:
