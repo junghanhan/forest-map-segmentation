@@ -10,7 +10,7 @@ from itertools import combinations
 import math
 import networkx as nx
 from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
-    MIN_BLOB_AREA, MAX_BLOB_AREA
+    MIN_BLOB_AREA, MAX_BLOB_AREA, SIMPLIFY_TOLERANCE
 import matplotlib.pyplot as plt
 
 
@@ -88,7 +88,8 @@ def get_shapely_geom(geojson_list):
     return results
 
 
-def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST, min_branch_len=MIN_BRANCH_LEN):
+def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST,
+                      tolerance=SIMPLIFY_TOLERANCE):
     """
     Create a centerline for a polygon
 
@@ -97,7 +98,7 @@ def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, inter
             This is to prevent redundant calls of creating centerline of polygon.
     :param buffer: value to simplify polygon
     :param interpolation_distance: the higher value, the less branches from the centerline
-    :param min_branch_len: value to prune unnecessary short branches when centerline is created
+    :param tolerance: value to simplify the created centerline
     :return: Returns a merged LineString if lines are continuous from tip to tail.
         Otherwise, MultiLineString will be returned.
     """
@@ -124,24 +125,26 @@ def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, inter
             print(err)
             result_line = None
 
+        result_line = result_line.simplify(tolerance)
         poly_line_dict[id(poly)] = result_line
 
     return result_line
 
 
-def get_search_box(point, distance):
+def get_search_box(point, width, height):
     """
     Get box polygon around the point
 
     :param point: Shapely Point object
-    :param distance: distance value representing the distance between center and the line of the box
+    :param width: width of the returned box
+    :param height: height of the returned box
     :return: a square-shaped Shapely Polygon object
     """
     if not isinstance(point, Point):
         raise TypeError(
             f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
-    return box(point.x - distance, point.y - distance, point.x + distance, point.y + distance)
+    return box(point.x - width / 2, point.y - height / 2, point.x + width / 2, point.y + height / 2)
 
 
 def affine_transform (transform, pixel_coordinate):

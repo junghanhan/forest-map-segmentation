@@ -1,7 +1,7 @@
 from shapely.ops import polygonize_full
 import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line, get_image_bbox
-from dot_dash import extract_dot_dashed_lines
+from dot_dash import extract_dot_dashed_lines, Dash
 from txt_proc import recognize_texts, plot_prediction_result
 from settings import MODEL_PATH, TARGET_ALPHABETS, MULTITHREAD, \
     OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, IMAGE_BBOX_BUFFER

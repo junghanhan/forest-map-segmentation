@@ -3,10 +3,11 @@ import os
 # algorithm related constants
 # DASH_SEARCH_BOX_W = 0.0003 * 2
 # DASH_SEARCH_BOX_H = 0.00005 * 2
-DASH_SEARCH_BOX_W = 0.0004 * 2
+DASH_SEARCH_BOX_W = 0.00035 * 2
 DASH_SEARCH_BOX_H = 0.00007 * 2
 ENDPOINT_FILTER_R = 0.00014  # endpoint filter radius
 VDOT_FILTER_R = 0.0002
+SEARCH_STEP_DEGREE = 15  # the rotation degree that will be applied to search boxes after each search iteration
 
 # the distance between dash and dot; used to place virtual dots
 # should be smaller than actual distance cause when the dots are not detected,
@@ -24,6 +25,7 @@ MAX_P2P_DISTANCE = 0.003  # maximum point to point distance with a dash in betwe
 # centerline creation related constants
 INTERPOLATION_DIST = 0.00006
 CENTERLINE_BUFFER = 0.00001
+SIMPLIFY_TOLERANCE = 0.00001  # this is solely to reduce the execution time
 
 # image bounding box inside buffer value; the larger the value, the bigger buffer inside the image box
 IMAGE_BBOX_BUFFER = -0.00005
