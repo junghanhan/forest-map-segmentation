@@ -1,7 +1,7 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms, get_search_box
@@ -85,7 +85,7 @@ class Dot:
         self.dashes = {}
 
     def search_dashes(self, non_dot_polys_tree, poly_line_dict, line_ep_dict,
-                      step_degree=20, sbox_w=DASH_SEARCH_BOX_W, sbox_h=DASH_SEARCH_BOX_H):
+                      step_degree=SEARCH_STEP_DEGREE, sbox_w=DASH_SEARCH_BOX_W, sbox_h=DASH_SEARCH_BOX_H):
         """
         Search and saves the dashes on both sides of the dot
         Returns the searched Dash objects
@@ -150,7 +150,7 @@ class Dot:
                             # rule 3: dash polygon's endpoint should be in the search box
                             tree = STRtree(endpoints)
                             endpoints_in_sbox = tree.query(sbox)
-                            endpoints_in_sbox = [ep for ep in endpoints_in_sbox if sbox.contains(ep)]
+                            endpoints_in_sbox = [ep for ep in endpoints_in_sbox if sbox.covers(ep)]
                             if len(endpoints_in_sbox) > 0:
                                 # find the nearest endpoint
                                 target_ep = find_nearest_geom(self.point, endpoints_in_sbox)
@@ -202,7 +202,7 @@ class Dot:
 
         return found_dashes
 
-    def search_additional_dashes(self, non_dot_polys_tree, step_degree=20,
+    def search_additional_dashes(self, non_dot_polys_tree, step_degree=SEARCH_STEP_DEGREE,
                                  sbox_w=DASH_SEARCH_BOX_W / 2, sbox_h=DASH_SEARCH_BOX_H / 2):
         """
         Search and saves additional dashes around the dot.
@@ -320,7 +320,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     # filter out dot points that are within non dot polygons (considered as false dot points)
     for poly in non_dot_polys:
         overlapped_dot_ps = dot_ps_tree.query(poly)
-        dot_ps_to_remove.update([id(dot_p) for dot_p in overlapped_dot_ps if poly.contains(dot_p)])
+        dot_ps_to_remove.update([id(dot_p) for dot_p in overlapped_dot_ps if poly.covers(dot_p)])
     dot_ps = [dot_p for dot_p in dot_ps if id(dot_p) not in dot_ps_to_remove]
 
     # for dot_p in dot_ps:
@@ -364,7 +364,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     for dot in Dot.all_dots.values():
         filter_circle = dot.point.buffer(VDOT_FILTER_R)
         filtered = vdots_tree.query(filter_circle)
-        redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
+        redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.covers(p)])
         # plt.plot(dot.point.x, dot.point.y, marker="o")
         # plt.plot(*filter_circle.exterior.xy)
 
@@ -383,7 +383,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
                 # plt.plot(vdot_p.x, vdot_p.y, marker="*")
                 filter_circle = vdot_p.buffer(VDOT_FILTER_R)
                 filtered = vdots_tree.query(filter_circle)
-                redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.contains(p)])
+                redundant_vdot_ps.update([id(p) for p in filtered if filter_circle.covers(p)])
 
     # search and associate additional dashes
     for dot in Dot.all_dots.values():
@@ -393,6 +393,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     # obtain dash lines
     for dash in Dash.all_dashes.values():
         if dash.centerline is not None:
+            # plot_line(dash.centerline)
             # prepare dash body line to be merged
             if isinstance(dash.centerline, MultiLineString):
                 lines = list(dash.centerline.geoms)
