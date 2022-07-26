@@ -388,9 +388,8 @@ def get_close_points(line1, line2):
         if isinstance(intersect_points, Point):
             intersect_points = [intersect_points]
         for intersect_p in intersect_points:
-            lines = [line1] if isinstance(line1, LineString) else line1
-            all_points_in_line = MultiPoint([p for line in lines for p in line.coords])
-            target_p = nearest_points(all_points_in_line, intersect_p)[0]
+            all_points_on_line = get_points_on_line(line1)
+            target_p = nearest_points(all_points_on_line, intersect_p)[0]
             # to prevent duplicate points
             if target_p not in close_points:
                 close_points.append(target_p)
@@ -419,6 +418,24 @@ def filter_geoms(center_point, geoms, radius):
                           if not ep_scircle.contains(fg)]
 
     return filtered_geoms
+
+
+def get_points_on_line(line):
+    """
+    Get all points on line as a list.
+
+    :param line: a Shapely MultiLineString or LineString object
+    :return: a list of Shapely Point objects
+    """
+
+    if not isinstance(line, MultiLineString) and not isinstance(line, LineString):
+        raise TypeError(
+            f'Inappropriate type: {type(line)} for mline whereas a MultiLineString or LineString is expected')
+
+    lines = [line] if isinstance(line, LineString) else line
+    all_points_on_line = MultiPoint([p for line in lines for p in line.coords])
+
+    return all_points_on_line
 
 
 # matplotlib line plot helper function
