@@ -4,7 +4,7 @@ import os
 # DASH_SEARCH_BOX_W = 0.0003 * 2
 # DASH_SEARCH_BOX_H = 0.00005 * 2
 DASH_SEARCH_BOX_W = 0.00035 * 2
-DASH_SEARCH_BOX_H = 0.00007 * 2
+DASH_SEARCH_BOX_H = 0.00009 * 2
 ENDPOINT_FILTER_R = 0.00014  # endpoint filter radius
 VDOT_FILTER_R = 0.0002
 SEARCH_STEP_DEGREE = 15  # the rotation degree that will be applied to search boxes after each search iteration

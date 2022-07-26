@@ -194,7 +194,6 @@ class Dot:
                             dash = Dash(poly, centerline, endpoints)
                             dash.save_dot_ep_pairs([(self, target_ep)])
 
-                        # plt.plot(min_dist_ep.x, min_dist_ep.y, marker="D")
                         found_dashes.append(dash)
 
                         # store the created dashes in the dot object
