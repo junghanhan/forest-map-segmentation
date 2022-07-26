@@ -1,7 +1,8 @@
 from shapely import affinity
 from shapely.geometry import Point, box, Polygon, LineString, MultiLineString, MultiPoint
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE, \
+    SML_DASH_SEARCH_BOX_W, SML_DASH_SEARCH_BOX_H
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms, get_search_box, get_points_on_line
@@ -202,7 +203,7 @@ class Dot:
         return found_dashes
 
     def search_additional_dashes(self, non_dot_polys_tree, step_degree=SEARCH_STEP_DEGREE,
-                                 sbox_w=DASH_SEARCH_BOX_W / 1.5, sbox_h=DASH_SEARCH_BOX_H / 1.5):
+                                 sbox_w=SML_DASH_SEARCH_BOX_W, sbox_h=SML_DASH_SEARCH_BOX_H):
         """
         Search and saves additional dashes around the dot.
         Only the polygons that are already detected as dashes by other dots are searched.
