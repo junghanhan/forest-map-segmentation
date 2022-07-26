@@ -3,8 +3,10 @@ import os
 # algorithm related constants
 # DASH_SEARCH_BOX_W = 0.0003 * 2
 # DASH_SEARCH_BOX_H = 0.00005 * 2
-DASH_SEARCH_BOX_W = 0.00035 * 2
-DASH_SEARCH_BOX_H = 0.00007 * 2
+DASH_SEARCH_BOX_W = 0.000371 * 2
+DASH_SEARCH_BOX_H = 0.00009 * 2
+SML_DASH_SEARCH_BOX_W = 0.000466
+SML_DASH_SEARCH_BOX_H = 0.00012
 ENDPOINT_FILTER_R = 0.00014  # endpoint filter radius
 VDOT_FILTER_R = 0.0002
 SEARCH_STEP_DEGREE = 15  # the rotation degree that will be applied to search boxes after each search iteration
@@ -16,7 +18,7 @@ SEARCH_STEP_DEGREE = 15  # the rotation degree that will be applied to search bo
 DASH_DOT_DIST = 0.00007
 MIN_BLOB_AREA = 20  # openCV blob detection minimum area
 MAX_BLOB_AREA = 140  # openCV blob detection maximum area
-MAX_DOT_LEN = 0.0005  # maximum dot polygon parameter
+MAX_DOT_LEN = 0.00048  # maximum dot polygon parameter
 MIN_BRANCH_LEN = 0.00005  # minimum branch length that will be regarded as a valid branch of a dash
 MAX_SWAMP_SYMBOL_LEN = 0.0025  # swamp symbol polygon's maximum length
 MAX_DASH_LINE_LEN = 0.0035  # maximum drawn vector dash line length; this is to filter out the lines drawn on solid lines

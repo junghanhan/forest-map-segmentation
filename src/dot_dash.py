@@ -1,10 +1,11 @@
 from shapely import affinity
-from shapely.geometry import Point, box, Polygon, LineString, MultiLineString
+from shapely.geometry import Point, box, Polygon, LineString, MultiLineString, MultiPoint
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE, \
+    SML_DASH_SEARCH_BOX_W, SML_DASH_SEARCH_BOX_H
 from line_proc import get_line_endpoints, create_centerline, \
     get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
-    get_common_endpoints, get_close_points, filter_geoms, get_search_box
+    get_common_endpoints, get_close_points, filter_geoms, get_search_box, get_points_on_line
 from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
 from shapely.strtree import STRtree
@@ -194,7 +195,6 @@ class Dot:
                             dash = Dash(poly, centerline, endpoints)
                             dash.save_dot_ep_pairs([(self, target_ep)])
 
-                        # plt.plot(min_dist_ep.x, min_dist_ep.y, marker="D")
                         found_dashes.append(dash)
 
                         # store the created dashes in the dot object
@@ -203,7 +203,7 @@ class Dot:
         return found_dashes
 
     def search_additional_dashes(self, non_dot_polys_tree, step_degree=SEARCH_STEP_DEGREE,
-                                 sbox_w=DASH_SEARCH_BOX_W / 1.5, sbox_h=DASH_SEARCH_BOX_H / 1.5):
+                                 sbox_w=SML_DASH_SEARCH_BOX_W, sbox_h=SML_DASH_SEARCH_BOX_H):
         """
         Search and saves additional dashes around the dot.
         Only the polygons that are already detected as dashes by other dots are searched.
@@ -224,7 +224,7 @@ class Dot:
         # rotate the search box to find the nearby ADDITIONAL dashes
         for d in range(0, 180, step_degree):
             sbox = affinity.rotate(default_box, d, origin=self.point)
-            plt.plot(*sbox.exterior.xy)
+            # plt.plot(*sbox.exterior.xy)
 
             # candidate polygons searched by the search box
             # filter out polygons that are already associated with this dot
@@ -234,13 +234,18 @@ class Dot:
                                and id(geom) not in self.dashes
                                and id(geom) in Dash.all_dashes]
 
-            for poly in searched_polys:
-                plt.plot(*poly.exterior.xy)
+            # if len(searched_polys) > 0:
+            #     plt.plot(*sbox.exterior.xy)
+            # for poly in searched_polys:
+            #     plt.plot(*poly.exterior.xy)
 
             # associate the dash object with this dot
             for poly in searched_polys:
                 dash = Dash.get_dash_obj(poly)
-                _, contact_point = nearest_points(self.point, dash.centerline)  # contact point on the centerline
+                # plot_line(dash.centerline)
+                all_points_on_line = get_points_on_line(dash.centerline)
+
+                contact_point = nearest_points(all_points_on_line, self.point)[0]  # contact point on the centerline
 
                 # update the dash
                 dash.save_dot_ep_pairs([(self, contact_point)])
@@ -393,8 +398,9 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     for dot in Dot.all_dots.values():
         dot.search_additional_dashes(non_dot_polys_tree)
 
-    logging.info('Extracting the lines from dots and dash polygons')
     # obtain dash lines
+    logging.info('Extracting the lines from dots and dash polygons')
+    buffered_image_bbox = image_bbox.buffer(IMAGE_BBOX_BUFFER, single_sided=True)
     for dash in Dash.all_dashes.values():
         if dash.centerline is not None:
             # plot_line(dash.centerline)
@@ -409,7 +415,6 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
                 lines.append(LineString([ep, dot.point]))
 
             # make virtual Dot objects to draw the lines connecting between dash to image bounding box
-            buffered_image_bbox = image_bbox.buffer(IMAGE_BBOX_BUFFER, single_sided=True)
             # points that intersect with buffered image bounding box
             close_points = get_close_points(dash.centerline, buffered_image_bbox.interiors[0])
             for cp in close_points:
@@ -423,8 +428,6 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
             # to split lines at every intersection; this is to create intersection vertices in graph
             mline = unary_union(mline)
 
-            # plot_line(mline)
-
             # find the shortest paths between dots
             logging.info('Finding shortest path between dots to connect dots and dashes')
             path_lines = []
@@ -433,7 +436,6 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
                 if pair1[0].point.distance(pair2[0].point) < MAX_P2P_DISTANCE:
                     path_line = get_path_line(mline, pair1[0].point, pair2[0].point)
                     path_lines.append(path_line)
-
 
             # filter out drawn lines that are possibly solid lines
             logging.info('Filtering out long lines')
