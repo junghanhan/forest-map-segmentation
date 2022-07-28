@@ -60,4 +60,4 @@ IMAGE_FILES = ['093E15e_1976_D_1.gtiff',
 
 DRIVER = 'ESRI Shapefile'
 
-MULTITHREAD = True
+MULTIPROCESSING = True
