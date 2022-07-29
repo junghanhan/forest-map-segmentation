@@ -1,8 +1,5 @@
 import warnings
 import os
-# suppress warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import sys
 from shapely.ops import polygonize_full
 import matplotlib.pyplot as plt
@@ -94,6 +91,10 @@ def main(p_idx, image_file, input_dir, output_dir):
         print_exc()
         print(err)
         print(f'Please check the log ({logfile_path})')
+
+
+# suppress warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 if __name__ == '__main__':

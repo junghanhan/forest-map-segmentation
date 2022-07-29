@@ -1,8 +1,13 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress keras warning
+
 import matplotlib.pyplot as plt
 import keras_ocr
 import cv2
 import math
 import numpy as np
+
+
 
 
 def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abcdefghijklmnopqrstuvwxyz'):

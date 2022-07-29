@@ -47,15 +47,6 @@ TARGET_ALPHABETS = '()*+-.0123456789ABCDEFGHIKLMNOPRSTUVWXYabcdefghijklmnopqrstu
 
 # input image and input/output directories constants
 INPUT_DIR = os.path.join(ROOT_DIR,'input')
-#IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif' # default test image
-IMAGE_FILE = '093E15e_1976_D_1.gtiff'
-
 OUTPUT_DIR = os.path.join(ROOT_DIR,'output')
-
-# Multithread version constants
-IMAGE_FILES = ['093E15e_1976_D_1.gtiff',
-               '093L2f_1977_D_1.gtiff',
-               '093L2d_1976_D_1.gtiff',
-               '093M1f_1975_D_1.gtiff']
 
 DRIVER = 'ESRI Shapefile'
