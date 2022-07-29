@@ -59,5 +59,3 @@ IMAGE_FILES = ['093E15e_1976_D_1.gtiff',
                '093M1f_1975_D_1.gtiff']
 
 DRIVER = 'ESRI Shapefile'
-
-MULTIPROCESSING = True
