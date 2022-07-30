@@ -113,8 +113,12 @@ if __name__ == '__main__':
         input_dir, image_file = os.path.split(sys.argv[i])
         args.append((i, image_file, input_dir, OUTPUT_DIR))
 
-    with Pool() as pool:
-        pool.starmap(main, args)
+    if len(args) == 1:
+        p_idx, image_file, input_dir, output_dir = args[0]
+        main(p_idx, image_file, input_dir, output_dir)
+    else:
+        with Pool() as pool:
+            pool.starmap(main, args)
 
     print(f'All output files are stored in: {OUTPUT_DIR}')
 
