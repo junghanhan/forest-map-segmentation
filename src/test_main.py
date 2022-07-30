@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 from line_proc import get_dot_points, get_geojson_list, get_shapely_geom, plot_line, get_image_bbox
 from dot_dash import extract_dot_dashed_lines, Dash
 from txt_proc import recognize_texts, plot_prediction_result
-from settings import MODEL_PATH, TARGET_ALPHABETS, MULTIPROCESSING, \
-    OUTPUT_DIR, INPUT_DIR, IMAGE_FILES, IMAGE_FILE, IMAGE_BBOX_BUFFER
+from settings import OUTPUT_DIR, INPUT_DIR
 import rasterio
 from shapely.geometry import Polygon
 from line_proc import affine_transform
@@ -15,6 +14,15 @@ from osgeo import gdal
 import logging
 import os
 from traceback import print_exc
+
+#IMAGE_FILE = '093C10f_1975_D_1_clipped_small.tif' # default test image
+IMAGE_FILE = 'case11.tif'
+
+# Multiprocess version constants
+IMAGE_FILES = ['092L3g_1969_D_1_clipped_1000x500.gtiff',
+               '093C10e_1975_D_1_clipped1.tif',
+               '093C10e_1975_D_1_clipped2.tif',
+               '093C10f_1975_D_1_clipped.tif']
 
 
 def main(image_file, input_dir, output_dir):
