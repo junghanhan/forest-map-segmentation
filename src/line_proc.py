@@ -1,6 +1,5 @@
 from traceback import print_exc
 import logging
-
 import affine
 import cv2
 import numpy as np
@@ -19,11 +18,16 @@ from typing import Tuple, List, Dict
 from shapely.geometry.base import BaseGeometry
 
 
-# get blobs as KeyPoint obj from image
-# cv::KeyPoint attributes : pt, size, etc.
-# image : cv2 image object; don't need to be a binarized image
-# because cv2.SimpleBlobDetector itself binarzes the input image
 def get_blobs(image: np.ndarray, min_blob_area: float = MIN_BLOB_AREA, max_blob_area: float = MAX_BLOB_AREA) -> Tuple:
+    """
+    Get a tuple of the detected blobs
+
+    :param image: image read as openCV2 Numpy ndarray
+    :param min_blob_area: minimum area for detecting blobs
+    :param max_blob_area: maximum area for detecting blobs
+    :return: a tuple that contains the detected blobs as OpenCV2 KeyPoint objects
+        KeyPoint objects contains the pixel coordinates of blobs
+    """
     params = cv2.SimpleBlobDetector_Params()
     params.filterByArea = True
     params.minArea = min_blob_area
@@ -37,9 +41,11 @@ def get_blobs(image: np.ndarray, min_blob_area: float = MIN_BLOB_AREA, max_blob_
 
 def get_dot_points(image_path: str) -> List[Point]:
     """
-    Get dots as Shapely Point objects on input forest cover map
-    :param image_path: Input image path
-    :return: a list of Shapely Point objects representing dots on a forest cover map
+    Get dots as Shapely Point objects on input forest cover map.
+
+    :param image_path: Input GeoTiff image file path
+    :return: a list of Shapely Point objects representing dots on a forest cover map. The Point objects represents
+        geospatial coordinates.
     """
 
     img = cv2.imread(image_path)
@@ -61,12 +67,19 @@ def get_dot_points(image_path: str) -> List[Point]:
     return blob_points
 
 
-# get geojson list extracted from raster image
-# This function assumes the raster file is in grayscale format.
-# raster_file_path:  GeoTiff file path
-def get_geojson_list(raster_file_path: str, mask_value: int = None) -> List[Dict]:
+def get_geojson_list(image_path: str, mask_value: int = None) -> List[Dict]:
+    """
+    Get geojson list extracted from raster image
+    This function assumes the raster file is in grayscale format.
+
+    :param image_path: Input GeoTiff image file path
+    :param mask_value: grayscale intensity value of pixels that will be extracted as geojson
+        e.g., 0: black pixels will be extracted as geojson
+    :return: a list of geojson values represented as dictionaries
+    """
+
     with rasterio.Env():
-        with rasterio.open(raster_file_path) as src:
+        with rasterio.open(image_path) as src:
             image = src.read(1)  # Band 1
             ret, inv_bin_image = cv2.threshold(image, 120, 255, cv2.THRESH_BINARY_INV)
 
@@ -83,8 +96,13 @@ def get_geojson_list(raster_file_path: str, mask_value: int = None) -> List[Dict
     return list(results)
 
 
-# get shapely geometries extracted from geojson
 def get_shapely_geom(geojson_list: List[Dict]) -> List[BaseGeometry]:
+    """
+    Get shapely geometries extracted from geojson
+
+    :param geojson_list: a list of geojson values represented as dictionaries
+    :return: a list of Shapely Polygon objects created by input geojson list
+    """
     results = []
 
     for geojson in geojson_list:
@@ -101,10 +119,11 @@ def create_centerline(poly: Polygon, poly_line_dict: Dict[int, BaseGeometry] = N
 
     :param poly: target polygon that will be converted into line
     :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
-            This is to prevent redundant calls of creating centerline of polygon.
-    :param buffer: value to simplify polygon
-    :param interpolation_distance: the higher value, the less branches from the centerline
-    :param tolerance: value to simplify the created centerline
+            This is to prevent redundant calls for the function that creates centerline of polygon.
+    :param buffer: value to expand the target polygon. This value is to simplify the polygon before the centerline is
+        created from the polygon. The higher the value, the bigger the polygon.
+    :param interpolation_distance: the higher value, the fewer branches from the centerline
+    :param tolerance: value to simplify the created centerline. The higher value, the simpler centerline.
     :return: Returns a merged LineString if lines are continuous from tip to tail.
         Otherwise, MultiLineString will be returned.
     """
@@ -123,8 +142,8 @@ def create_centerline(poly: Polygon, poly_line_dict: Dict[int, BaseGeometry] = N
             centerline_obj = Centerline(geom, interpolation_distance)
 
             # merge the centerlines into a single centerline
-            mline = MultiLineString(centerline_obj)
-            result_line = linemerge(mline)
+            line = MultiLineString(centerline_obj)
+            result_line = linemerge(line)
         except Exception as err:  # possibly TooFewRidgesError
             logging.error(err, exc_info=True)
             print_exc()
@@ -155,9 +174,11 @@ def get_search_box(point: Point, width: float, height: float) -> Polygon:
 
 def affine_transform(transform: affine.Affine, pixel_coordinate: Tuple[float, float]) -> Tuple[float, float]:
     """
-    transform: (Affine or sequence of GroundControlPoint or RPC)
-    – Transform suitable for input to AffineTransformer, GCPTransformer, or RPCTransformer.
-    pixel_coordinate: pixel coordinate on the image; can be a tuple or an array representing a coordinate of a point
+    Transform a pixel coordinate to a geospatial coordinate based on input Affine
+
+    :param transform: Transform suitable for input to AffineTransformer, GCPTransformer, or RPCTransformer.
+    :param pixel_coordinate: pixel coordinate on the image; can be a tuple or an array representing a coordinate of a point
+    :return: a tuple of a geospatial coordinate
     """
 
     g_x, g_y = rasterio.transform.xy(transform = transform,
@@ -167,43 +188,50 @@ def affine_transform(transform: affine.Affine, pixel_coordinate: Tuple[float, fl
     return (g_x, g_y)
 
 
-def get_line_endpoints(mline: BaseGeometry, line_ep_dict: Dict[int, List] = None) -> List[Point]:
+def get_line_endpoints(line: BaseGeometry, line_ep_dict: Dict[int, List] = None) -> List[Point]:
     """
     Get endpoints of MultiLineString except for intersecting points between its LineStrings
     Get endpoints of LineString
 
-    :param mline: merged line, it can be MultiLineString or LineString
+    :param line: a Shapely MultiLineString or LineString object
     :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
             This is to prevent redundant calls of get_line_endpoints.
     :return: a list of Shapely Point objects
     """
 
-    if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
+    if not isinstance(line, MultiLineString) and not isinstance(line, LineString):
         raise TypeError(
-            f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
+            f'Inappropriate type: {type(line)} for line whereas a MultiLineString or LineString is expected')
 
-    if id(mline) in line_ep_dict:
-        endpoints = line_ep_dict[id(mline)]
+    if id(line) in line_ep_dict:
+        endpoints = line_ep_dict[id(line)]
     else:
-        if isinstance(mline, MultiLineString):
+        if isinstance(line, MultiLineString):
             intersect_points = []
-            for line1, line2 in combinations([line for line in mline], 2):
+            for line1, line2 in combinations([l for l in line], 2):
                 if line1.intersects(line2):
                     intersections = line1.intersection(line2)
                     if isinstance(intersections, list):
                         intersect_points.extend()
                     else:
                         intersect_points.append(intersections)
-            endpoints = [p for p in mline.boundary if p not in intersect_points]
+            endpoints = [p for p in line.boundary if p not in intersect_points]
         else:  # LineString
-            endpoints = list(mline.boundary)
+            endpoints = list(line.boundary)
 
-        line_ep_dict[id(mline)] = endpoints
+        line_ep_dict[id(line)] = endpoints
 
     return endpoints
 
 
 def get_common_endpoints(endpoints1: List[Point], endpoints2: List[Point]) -> List[Point]:
+    """
+    Get common Shapely Points between two lists of Shapely Points
+
+    :param endpoints1: a list of Shapely Point objects
+    :param endpoints2: a list of Shapely Point objects
+    :return: a list of Point objects that are within both input lists
+    """
     endpoints_dict1 = {}
     endpoints_dict2 = {}
     for p in endpoints1:
@@ -218,16 +246,22 @@ def get_common_endpoints(endpoints1: List[Point], endpoints2: List[Point]) -> Li
 
 def get_extrapolated_point(line: BaseGeometry, endpoint: Point, dist: float = DASH_DOT_DIST) -> Point:
     """
-    Creates a point extrapoled in line's direction to endpoint
-    line: LineString or MultiLineString that will be used to extrapolate
-    endpoint: Shapely Point object that is the endpoint of the line
-    dist: distance from end point to the extrapolated point
+    Creates an extrapolated point from a line.
+
+    :param line: a Shapely LineString or MultiLineString object that will be used to extrapolate
+    :param endpoint: a Shapely Point object that is an endpoint of the input line.
+        This endpoint will be the previous point of the extrapolated point.
+    :param dist: the distance from the endpoint to the extrapolated point
+    :return: a Shapely Point object. The extrapolated point.
     """
 
     def get_prev_point(line: BaseGeometry, endpoint: Point) -> Point:
         """
         Get the previous point of endpoint in the line
-        line: LineString that contains endpoint
+
+        :param line: a Shapely LineString object that contains endpoint
+        :param endpoint: a Shapely Point object that is an endpoint of the input line
+        :return: a Shapely Point object. It is the point on the line next to the input endpoint.
         """
 
         l_coords = list(line.coords)
@@ -261,20 +295,21 @@ def get_extrapolated_point(line: BaseGeometry, endpoint: Point, dist: float = DA
     return result
 
 
-def get_path_line(mline: BaseGeometry, start_p: Point, end_p: Point) -> LineString:
+def get_shortest_path_line(path: BaseGeometry, start_p: Point, end_p: Point) -> LineString:
     """
-    Get the LineString that connects start point to end point in a MultiLineString or LineString
-    start_p and end_p should be contained in mline
+    Get a line that connects between two points by using the input line as available paths.
+
+    :param path: a Shapely LineString or MultiLineString object that will be used as available paths
+    :param start_p: a Shapely Point object. This Point should be included on the input line.
+    :param end_p: a Shapely Point object. This Point should be included on the input line.
+    :return: a Shapely LineString object representing the shortest path between two input points
     """
 
-    def add_edge_to_graph(G: nx.Graph, e1: Tuple[float, float], e2: Tuple[float, float], w: float) -> None:
-        G.add_edge(e1, e2, weight=w)
-
-    if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
+    if not isinstance(path, MultiLineString) and not isinstance(path, LineString):
         raise TypeError(
-            f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
+            f'Inappropriate type: {type(path)} for path whereas a MultiLineString or LineString is expected')
 
-    if isinstance(mline, MultiLineString):
+    if isinstance(path, MultiLineString):
         # unwrap Point to coord
         if isinstance(start_p, Point):
             start_p = start_p.coords[0]
@@ -284,24 +319,23 @@ def get_path_line(mline: BaseGeometry, start_p: Point, end_p: Point) -> LineStri
         try:
             G = nx.Graph()
 
-            for line in mline:
+            for l in path:
                 prev_p = None
-                for curr_p in line.coords:
+                for curr_p in l.coords:
                     if prev_p is not None:
-                        add_edge_to_graph(G, prev_p, curr_p, 1)
+                        G.add_edge(prev_p, curr_p, weight=1)
                     prev_p = curr_p
 
             # a list of coordinates representing the shortest path
-            path = nx.shortest_path(G, source=start_p, target=end_p)
-            result = LineString(path) if len(path) > 1 else None
+            shortest_path = nx.shortest_path(G, source=start_p, target=end_p)
+            result = LineString(shortest_path) if len(shortest_path) > 1 else None
         except Exception as err:
             logging.error(err, exc_info=True)
             print_exc()
             print(err)
             result = None
-
     else:
-        result = mline
+        result = path
 
     return result
 
@@ -310,8 +344,8 @@ def find_nearest_geom(target: BaseGeometry, geom_list: List[BaseGeometry]) -> Ba
     """
     Find the nearest geometric object to the target geometric object from list
 
-    :param target: Shapely geometric object
-    :param geom_list: a list of Shapely geometric objects
+    :param target: Shapely geometry object
+    :param geom_list: a list of Shapely geometry objects
     :return: the nearest Shapely geometric object
     """
 
@@ -334,7 +368,7 @@ def get_image_bbox(image_path: str, offset: float = 0) -> LinearRing:
 
     :param image_path: Input image path
     :param offset: pixel offset value that will be used to reduce the size of bounding box close to center
-    :return: a Shapely LinearRing object
+    :return: a Shapely LinearRing object representing image bounding box
     """
 
     left_x, lower_y, right_x, upper_y = rasterio.open(image_path).bounds
@@ -362,10 +396,10 @@ def get_close_points(line1: BaseGeometry, line2: BaseGeometry) -> List[Point]:
 
     if not isinstance(line1, MultiLineString) and not isinstance(line1, LineString):
         raise TypeError(
-            f'Inappropriate type: {type(line1)} for mline whereas a MultiLineString or LineString is expected')
+            f'Inappropriate type: {type(line1)} for line1 whereas a MultiLineString or LineString is expected')
     if not isinstance(line2, MultiLineString) and not isinstance(line2, LineString):
         raise TypeError(
-            f'Inappropriate type: {type(line2)} for mline whereas a MultiLineString or LineString is expected')
+            f'Inappropriate type: {type(line2)} for line2 whereas a MultiLineString or LineString is expected')
 
     close_points = []
     intersect_points = line2.intersection(line1)
@@ -407,7 +441,7 @@ def filter_geoms(center_point: Point, geoms: List[BaseGeometry], radius: float) 
 
 def get_points_on_line(line: BaseGeometry) -> MultiPoint:
     """
-    Get all points on line as a list.
+    Get all points on a line or lines as a list.
 
     :param line: a Shapely MultiLineString or LineString object
     :return: a list of Shapely Point objects (MultiPoint)
@@ -415,7 +449,7 @@ def get_points_on_line(line: BaseGeometry) -> MultiPoint:
 
     if not isinstance(line, MultiLineString) and not isinstance(line, LineString):
         raise TypeError(
-            f'Inappropriate type: {type(line)} for mline whereas a MultiLineString or LineString is expected')
+            f'Inappropriate type: {type(line)} for line whereas a MultiLineString or LineString is expected')
 
     lines = [line] if isinstance(line, LineString) else line
     all_points_on_line = MultiPoint([p for line in lines for p in line.coords])
@@ -423,8 +457,13 @@ def get_points_on_line(line: BaseGeometry) -> MultiPoint:
     return all_points_on_line
 
 
-# matplotlib line plot helper function
 def plot_line(line: BaseGeometry) -> None:
+    """
+    This is a function to facilitate plotting lines using matplotlib.
+
+    :param line: a Shapely LineString or MultiLineString object that will be plotted
+    """
+
     # plot the final line for dash
     if line.type == "MultiLineString":
         multilinestr = line

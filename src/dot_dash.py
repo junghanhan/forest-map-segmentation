@@ -6,7 +6,7 @@ from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAM
     MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE, \
     SML_DASH_SEARCH_BOX_W, SML_DASH_SEARCH_BOX_H
 from line_proc import get_line_endpoints, create_centerline, \
-    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
+    get_extrapolated_point, get_shortest_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms, get_search_box, get_points_on_line
 from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
@@ -16,6 +16,7 @@ import logging
 from traceback import print_exc
 from typing import Tuple, List, Dict
 
+
 # TODO: getter, setter implement (property)
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
@@ -23,17 +24,37 @@ class Dash:
     # check whether the polygon is already created as Dash
     @staticmethod
     def is_already_created(poly: Polygon) -> bool:
+        """
+        Check whether this polygon is already created as Dash object.
+
+        :param poly: a Shapely Polygon object
+        :return: a boolean value representing whether the polygon is already created as Dash object
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
         return id(poly) in Dash.all_dashes
 
     @staticmethod
     def get_dash_obj(poly: Polygon) -> object:
+        """
+        Get the Dash object created from the input polygon before.
+
+        :param poly: a Shapely Polygon object
+        :return: a Dash object
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
         return Dash.all_dashes[id(poly)]
 
     def __init__(self, poly: Polygon, centerline: BaseGeometry, endpoints: List[Point], dash_line: BaseGeometry = None):
+        """
+        :param poly: a Shapely Polygon object corresponding to this Dash object
+        :param centerline: a Shapely LineString or MultiLineString object created from the polygon corresponding to this
+            Dash object
+        :param endpoints: a list of Shapely Point objects representing endpoints of the line representing this Dash object
+        :param dash_line: a Shapely LineString or MultiLineString object representing the final line representing
+            this dash object. The final line is the line drawn for dash itself and its connecting line to its nearby dots.
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
 
@@ -48,6 +69,13 @@ class Dash:
         self.dot_ep_pairs = []
 
     def save_dot_ep_pairs(self, dot_ep_pairs: List[Tuple[object, Point]]) -> None:
+        """
+        Store a list of pairs of a Dot object and its closest endpoint of this Dash's centerline.
+        These pairs will be used when the connecting lines between this dash and nearby dots are drawn.
+
+        :param dot_ep_pairs: a list of pairs of a Dot object and a Shapely Point object
+        :return: None
+        """
         for dot, ep in dot_ep_pairs:
             if not isinstance(dot, Dot):
                 raise TypeError(f'Inappropriate type: {type(dot)} for dot whereas a Dot is expected')
@@ -66,17 +94,35 @@ class Dot:
     # check whether the point is already created as Dot
     @staticmethod
     def is_already_created(point: Point) -> bool:
+        """
+        Check whether this point is already created as Dot object.
+
+        :param point: a Shapely Point object
+        :return: a boolean value representing whether the point is already created as Dash object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return id(point) in Dot.all_dots
 
     @staticmethod
     def get_dot_obj(point: Point) -> object:
+        """
+        Get the Dot object created from the input point before.
+
+        :param point: a Shapely Point object
+        :return: a Dot object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return Dot.all_dots[id(point)]
 
     def __init__(self, point: Point):
+        """
+        :param point: a Shapely Point object corresponding to this Dot object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
@@ -87,6 +133,7 @@ class Dot:
         self.point = point
         self.dashes = {}
 
+    # TODO: need to divide it into multiple function
     def search_dashes(self, non_dot_polys_tree: STRtree, poly_line_dict: Dict[int, BaseGeometry], line_ep_dict: Dict[int, List],
                       step_degree: int = SEARCH_STEP_DEGREE, sbox_w: float = DASH_SEARCH_BOX_W, sbox_h: float = DASH_SEARCH_BOX_H)\
             -> List[object]:
@@ -107,9 +154,19 @@ class Dot:
         :return: a list of dash objects
         """
 
-        # distance: assumed distance from dot to dash (2*distance = search box width)
-        # buffer: search buffer (2*buffer = search box height)
         def get_dash_search_boxes(dot: object, width: float = sbox_w, height: float = sbox_h) -> List[object]:
+            """
+            Get two dash search boxes. Each box covers one side from the dot.
+            (e.g., box1: left side of dot, box2: right side of dot)
+            The reason it creates two separate boxes is to reduce detecting false dashes.
+            The search algorithm regards polygons as dashes only if both boxes search exactly one polygon each.
+            The size of these boxes are assumed to be the distance between this dot and nearby dashes.
+
+            :param dot: a Dot object that will be the center of the search boxes
+            :param width: width of dash search box. This value corresponds to the widths of both boxes.
+            :param height: height of dash search box. This value corresponds to the heights of both boxes.
+            :return: a list of Shapely Polygon objects
+            """
             box1 = box(dot.x - width / 2, dot.y - height / 2, dot.x, dot.y + height / 2)
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
@@ -169,6 +226,7 @@ class Dot:
 
                 # rule 4: one search box should find only one dash
                 # however, the dashes found by each box can be the same dash
+                # (in case there are other lines or symbols overlaps with two nearby dashes at the same time)
                 if len(searched_dashes) == 1:
                     all_searched_dashes.extend(searched_dashes)
                 else:
@@ -218,7 +276,7 @@ class Dot:
         :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
         :param sbox_h: height of dash search box
         :param sbox_w: width of dash search box
-        :return: a list of updated dash objects
+        :return: a list of updated Dash objects
         """
 
         default_box = get_search_box(self.point, sbox_w, sbox_h)
@@ -394,7 +452,7 @@ def extract_dot_dashed_lines(dot_ps: List[Point], polygons: List[Polygon], image
             for pair1, pair2 in combinations(dash.dot_ep_pairs, 2):
                 # if the points are too far away from each other, it is likely a solid line in between
                 if pair1[0].point.distance(pair2[0].point) < MAX_P2P_DISTANCE:
-                    path_line = get_path_line(mline, pair1[0].point, pair2[0].point)
+                    path_line = get_shortest_path_line(mline, pair1[0].point, pair2[0].point)
                     path_lines.append(path_line)
 
             # filter out drawn lines that are possibly solid lines

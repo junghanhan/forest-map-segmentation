@@ -16,7 +16,6 @@ def write_line_shapefile(lines: List[BaseGeometry], shapefile_path: str, epsg_co
     :param shapefile_path: a string that represents the path that the shapefile will
         be written
     :param epsg_code: 4-5 digit numbers that represent CRS definitions
-    :return: None
     """
 
     df = gpd.GeoDataFrame()
@@ -41,7 +40,6 @@ def write_poly_shapefile(polygons: List[BaseGeometry], labels: List[Tuple[str, P
     :param shapefile_path: a string that represents the path that the shapefile will
         be written
     :param epsg_code: 4-5 digit numbers that represent CRS definitions
-    :return: None
     """
 
     result_polys_tree = STRtree(polygons)

@@ -44,6 +44,7 @@ MODEL_FILE = 'map_labels_v3.h5'
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_FILE)
 # Target alphabet should match the trained model
 TARGET_ALPHABETS = '()*+-.0123456789ABCDEFGHIKLMNOPRSTUVWXYabcdefghijklmnopqrstuvwxyz'
+DEFAULT_ALPHABETS = '0123456789abcdefghijklmnopqrstuvwxyz'  # Keras-OCR pretrained model default alphabet set
 
 # input image and input/output directories constants
 INPUT_DIR = os.path.join(ROOT_DIR,'input')
