@@ -6,11 +6,11 @@ import keras_ocr
 import cv2
 import math
 import numpy as np
+from typing import List, Tuple
 
 
-
-
-def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abcdefghijklmnopqrstuvwxyz'):
+def recognize_texts(image_path: str, model_path: str = None, target_alphabets: str = '0123456789abcdefghijklmnopqrstuvwxyz') \
+        -> List[Tuple[str, np.ndarray]]:
     """
     Recognize the designated alphabets from the image
 
@@ -18,7 +18,8 @@ def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abc
     :param model_path: keras-OCR trained model path
     :param target_alphabets: the characters that will be detected and recognized.
         They should match the trained model's target alphabet
-    :return: (word, box) tuples recognized from the image.
+    :return: (word, box) tuples recognized from the image. word is the recognized characters as string,
+        and box is pixel coordinates of the bounding box of the detected label.
     """
 
     if model_path is None:
@@ -48,7 +49,7 @@ def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abc
     return result
 
 
-def plot_prediction_result(image_file_path, prediction_result):
+def plot_prediction_result(image_file_path: str, prediction_result: List[Tuple[str, np.ndarray]]) -> None:
     image = keras_ocr.tools.read(image_file_path)
 
     # plot the predictions
@@ -58,8 +59,8 @@ def plot_prediction_result(image_file_path, prediction_result):
 
 
 # returns text removed image (cv2)
-def get_text_removed_image(image_file_path, prediction_result):
-    def midpoint(x1, y1, x2, y2):
+def get_text_removed_image(image_file_path: str, prediction_result: List[Tuple[str, np.ndarray]]) -> np.ndarray:
+    def midpoint(x1: float, y1: float, x2: float, y2: float) -> Tuple[float, float]:
         x_mid = int((x1 + x2) / 2)
         y_mid = int((y1 + y2) / 2)
         return (x_mid, y_mid)

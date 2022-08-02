@@ -16,7 +16,7 @@ from traceback import print_exc
 from multiprocessing import Pool, cpu_count, current_process
 
 
-def main(p_idx, image_file, input_dir, output_dir):
+def main(p_idx: int, image_file: str, input_dir: str, output_dir: str) -> None:
     image_path = os.path.join(input_dir, image_file)
     shapefile_file = image_file.split(".")[0]
     line_shapefile_path = os.path.join(os.path.join(output_dir, 'line'), shapefile_file)

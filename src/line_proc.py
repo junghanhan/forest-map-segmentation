@@ -1,6 +1,9 @@
 from traceback import print_exc
 import logging
+
+import affine
 import cv2
+import numpy as np
 import rasterio
 from rasterio.features import shapes
 from centerline.geometry import Centerline
@@ -12,13 +15,15 @@ import networkx as nx
 from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
     MIN_BLOB_AREA, MAX_BLOB_AREA, SIMPLIFY_TOLERANCE
 import matplotlib.pyplot as plt
+from typing import Tuple, List, Dict
+from shapely.geometry.base import BaseGeometry
 
 
 # get blobs as KeyPoint obj from image
 # cv::KeyPoint attributes : pt, size, etc.
 # image : cv2 image object; don't need to be a binarized image
 # because cv2.SimpleBlobDetector itself binarzes the input image
-def get_blobs(image, min_blob_area=MIN_BLOB_AREA, max_blob_area=MAX_BLOB_AREA):
+def get_blobs(image: np.ndarray, min_blob_area: float = MIN_BLOB_AREA, max_blob_area: float = MAX_BLOB_AREA) -> Tuple:
     params = cv2.SimpleBlobDetector_Params()
     params.filterByArea = True
     params.minArea = min_blob_area
@@ -29,11 +34,12 @@ def get_blobs(image, min_blob_area=MIN_BLOB_AREA, max_blob_area=MAX_BLOB_AREA):
 
     return keypoints
 
-def get_dot_points(image_path):
+
+def get_dot_points(image_path: str) -> List[Point]:
     """
     Get dots as Shapely Point objects on input forest cover map
     :param image_path: Input image path
-    :return: Shapely Point objects representing dots on a forest cover map
+    :return: a list of Shapely Point objects representing dots on a forest cover map
     """
 
     img = cv2.imread(image_path)
@@ -58,7 +64,7 @@ def get_dot_points(image_path):
 # get geojson list extracted from raster image
 # This function assumes the raster file is in grayscale format.
 # raster_file_path:  GeoTiff file path
-def get_geojson_list(raster_file_path, mask_value=None):
+def get_geojson_list(raster_file_path: str, mask_value: int = None) -> List[Dict]:
     with rasterio.Env():
         with rasterio.open(raster_file_path) as src:
             image = src.read(1)  # Band 1
@@ -78,7 +84,7 @@ def get_geojson_list(raster_file_path, mask_value=None):
 
 
 # get shapely geometries extracted from geojson
-def get_shapely_geom(geojson_list):
+def get_shapely_geom(geojson_list: List[Dict]) -> List[BaseGeometry]:
     results = []
 
     for geojson in geojson_list:
@@ -88,8 +94,8 @@ def get_shapely_geom(geojson_list):
     return results
 
 
-def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, interpolation_distance=INTERPOLATION_DIST,
-                      tolerance=SIMPLIFY_TOLERANCE):
+def create_centerline(poly: Polygon, poly_line_dict: Dict[int, BaseGeometry] = None, buffer: float = CENTERLINE_BUFFER,
+                      interpolation_distance: float = INTERPOLATION_DIST, tolerance: float = SIMPLIFY_TOLERANCE) -> BaseGeometry:
     """
     Create a centerline for a polygon
 
@@ -131,7 +137,7 @@ def create_centerline(poly, poly_line_dict=None, buffer=CENTERLINE_BUFFER, inter
     return result_line
 
 
-def get_search_box(point, width, height):
+def get_search_box(point: Point, width: float, height: float) -> Polygon:
     """
     Get box polygon around the point
 
@@ -147,19 +153,21 @@ def get_search_box(point, width, height):
     return box(point.x - width / 2, point.y - height / 2, point.x + width / 2, point.y + height / 2)
 
 
-def affine_transform (transform, pixel_coordinate):
+def affine_transform(transform: affine.Affine, pixel_coordinate: Tuple[float, float]) -> Tuple[float, float]:
     """
     transform: (Affine or sequence of GroundControlPoint or RPC)
     – Transform suitable for input to AffineTransformer, GCPTransformer, or RPCTransformer.
     pixel_coordinate: pixel coordinate on the image; can be a tuple or an array representing a coordinate of a point
     """
+
     g_x, g_y = rasterio.transform.xy(transform = transform,
                                        rows = pixel_coordinate[1],
                                        cols = pixel_coordinate[0])
+
     return (g_x, g_y)
 
 
-def get_line_endpoints(mline, line_ep_dict=None):
+def get_line_endpoints(mline: BaseGeometry, line_ep_dict: Dict[int, List] = None) -> List[Point]:
     """
     Get endpoints of MultiLineString except for intersecting points between its LineStrings
     Get endpoints of LineString
@@ -195,7 +203,7 @@ def get_line_endpoints(mline, line_ep_dict=None):
     return endpoints
 
 
-def get_common_endpoints(endpoints1, endpoints2):
+def get_common_endpoints(endpoints1: List[Point], endpoints2: List[Point]) -> List[Point]:
     endpoints_dict1 = {}
     endpoints_dict2 = {}
     for p in endpoints1:
@@ -208,30 +216,7 @@ def get_common_endpoints(endpoints1, endpoints2):
     return list(common_endpoints.values())
 
 
-# deprecated
-# def is_endpoint_inside(mline, sbox):
-#     """
-#     Check if at least one endpoint of the line derived from the polygon is within
-#     the search box.
-#
-#     mline : target LineString or MultiLineString
-#     sbox : search box
-#     """
-#
-#     if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
-#         raise TypeError(
-#             f'Inappropriate type: {type(mline)} for mline whereas a MultiLineString or LineString is expected')
-#     if not isinstance(sbox, Polygon):
-#         raise TypeError(f'Inappropriate type: {type(sbox)} for sbox whereas a Polygon is expected')
-#
-#     endpoints = get_line_endpoints(mline)
-#     for p in endpoints:
-#         if sbox.contains(p):
-#             return True
-#     return False
-
-
-def get_extrapolated_point(line, endpoint, dist=DASH_DOT_DIST):
+def get_extrapolated_point(line: BaseGeometry, endpoint: Point, dist: float = DASH_DOT_DIST) -> Point:
     """
     Creates a point extrapoled in line's direction to endpoint
     line: LineString or MultiLineString that will be used to extrapolate
@@ -239,7 +224,7 @@ def get_extrapolated_point(line, endpoint, dist=DASH_DOT_DIST):
     dist: distance from end point to the extrapolated point
     """
 
-    def get_prev_point(line, endpoint):
+    def get_prev_point(line: BaseGeometry, endpoint: Point) -> Point:
         """
         Get the previous point of endpoint in the line
         line: LineString that contains endpoint
@@ -276,13 +261,13 @@ def get_extrapolated_point(line, endpoint, dist=DASH_DOT_DIST):
     return result
 
 
-def get_path_line(mline, start_p, end_p):
+def get_path_line(mline: BaseGeometry, start_p: Point, end_p: Point) -> LineString:
     """
     Get the LineString that connects start point to end point in a MultiLineString or LineString
     start_p and end_p should be contained in mline
     """
 
-    def add_edge_to_graph(G, e1, e2, w):
+    def add_edge_to_graph(G: nx.Graph, e1: Tuple[float, float], e2: Tuple[float, float], w: float) -> None:
         G.add_edge(e1, e2, weight=w)
 
     if not isinstance(mline, MultiLineString) and not isinstance(mline, LineString):
@@ -321,7 +306,7 @@ def get_path_line(mline, start_p, end_p):
     return result
 
 
-def find_nearest_geom(target, geom_list):
+def find_nearest_geom(target: BaseGeometry, geom_list: List[BaseGeometry]) -> BaseGeometry:
     """
     Find the nearest geometric object to the target geometric object from list
 
@@ -343,7 +328,7 @@ def find_nearest_geom(target, geom_list):
     return min_dist_geom
 
 
-def get_image_bbox(image_path, offset=0):
+def get_image_bbox(image_path: str, offset: float = 0) -> LinearRing:
     """
     Get image bounding box as a Shapely LinearRing object
 
@@ -366,7 +351,7 @@ def get_image_bbox(image_path, offset=0):
     return image_bbox
 
 
-def get_close_points(line1, line2):
+def get_close_points(line1: BaseGeometry, line2: BaseGeometry) -> List[Point]:
     """
     Get points on line1 which are close to the actual intersection points between line1 and line2
 
@@ -397,14 +382,14 @@ def get_close_points(line1, line2):
     return close_points
 
 
-def filter_geoms(center_point, geoms, radius):
+def filter_geoms(center_point: Point, geoms: List[BaseGeometry], radius: float) -> List[BaseGeometry]:
     """
-    Filter out Shapely geometries that are within a circle with a certain radius centering a point.
+    Get Shapely geometry objects that are within a circle with a certain radius centering a point.
 
     :param center_point: a Shapely Point object that is used as a center of a filtering circle
-    :param geoms: a list of Shapely Point objects
+    :param geoms: a list of Shapely geometry objects
     :param radius: the radius of the search circle that determines whether a point is near this Dot object or not
-    :return: a list of filtered Shapely Point objects
+    :return: a list of filtered Shapely geometry objects
     """
 
     if not isinstance(center_point, Point):
@@ -420,12 +405,12 @@ def filter_geoms(center_point, geoms, radius):
     return filtered_geoms
 
 
-def get_points_on_line(line):
+def get_points_on_line(line: BaseGeometry) -> MultiPoint:
     """
     Get all points on line as a list.
 
     :param line: a Shapely MultiLineString or LineString object
-    :return: a list of Shapely Point objects
+    :return: a list of Shapely Point objects (MultiPoint)
     """
 
     if not isinstance(line, MultiLineString) and not isinstance(line, LineString):
@@ -439,7 +424,7 @@ def get_points_on_line(line):
 
 
 # matplotlib line plot helper function
-def plot_line(line):
+def plot_line(line: BaseGeometry) -> None:
     # plot the final line for dash
     if line.type == "MultiLineString":
         multilinestr = line
