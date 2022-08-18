@@ -11,7 +11,7 @@ from shapely.ops import linemerge, nearest_points
 from itertools import combinations
 import math
 import networkx as nx
-from settings import MIN_BRANCH_LEN, DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
+from settings import DASH_DOT_DIST, INTERPOLATION_DIST, CENTERLINE_BUFFER, DASH_SEARCH_BOX_W, \
     MIN_BLOB_AREA, MAX_BLOB_AREA, SIMPLIFY_TOLERANCE
 import matplotlib.pyplot as plt
 from typing import Tuple, List, Dict
