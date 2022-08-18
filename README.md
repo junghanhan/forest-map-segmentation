@@ -1,5 +1,7 @@
 # Forest Cover Map Segmentation
 
+Please refer to `FMS_tool_user_guide.pdf` file for more detailed information.
+
 ## 1. Python development libraries installation  
 ```shell
 sudo apt-get update
