@@ -13,10 +13,18 @@ from line_proc import affine_transform
 from gis_io import write_line_shapefile, write_poly_shapefile
 import logging
 from traceback import print_exc
-from multiprocessing import Pool, cpu_count, current_process
+from multiprocessing import Pool, cpu_count
 
 
-def main(p_idx, image_file, input_dir, output_dir):
+def main(p_idx: int, image_file: str, input_dir: str, output_dir: str) -> None:
+    """
+    Convert a GeoTiff image file to Shapefile and write them in the output directory
+
+    :param p_idx: integer index to indicate process number
+    :param image_file: image file name as a string
+    :param input_dir: input directory name as a string
+    :param output_dir: output directory name as a string
+    """
     image_path = os.path.join(input_dir, image_file)
     shapefile_file = image_file.split(".")[0]
     line_shapefile_path = os.path.join(os.path.join(output_dir, 'line'), shapefile_file)
@@ -37,7 +45,7 @@ def main(p_idx, image_file, input_dir, output_dir):
 
         # get polygons' geojsons from raster image
         logging.info('Getting GeoJSON from image')
-        geojson_list = get_geojson_list(image_path, 0)  # masking black
+        geojson_list = get_geojson_list(image_path, 0)
         logging.info(f'Number of found polygons : {len(geojson_list)}')
 
         # get all polygons on the image
@@ -113,8 +121,12 @@ if __name__ == '__main__':
         input_dir, image_file = os.path.split(sys.argv[i])
         args.append((i, image_file, input_dir, OUTPUT_DIR))
 
-    with Pool() as pool:
-        pool.starmap(main, args)
+    if len(args) == 1:
+        p_idx, image_file, input_dir, output_dir = args[0]
+        main(p_idx, image_file, input_dir, output_dir)
+    else:
+        with Pool() as pool:
+            pool.starmap(main, args)
 
     print(f'All output files are stored in: {OUTPUT_DIR}')
 

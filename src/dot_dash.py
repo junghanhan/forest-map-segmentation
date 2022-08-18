@@ -1,10 +1,12 @@
 from shapely import affinity
-from shapely.geometry import Point, box, Polygon, LineString, MultiLineString, MultiPoint
+from shapely.geometry import Point, box, Polygon, LineString, MultiLineString, LinearRing
+from shapely.geometry.base import BaseGeometry
+
 from settings import DASH_SEARCH_BOX_W, DASH_SEARCH_BOX_H, MAX_DOT_LEN, MAX_SWAMP_SYMBOL_LEN, \
-    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_P2P_DISTANCE, SEARCH_STEP_DEGREE, \
-    SML_DASH_SEARCH_BOX_W, SML_DASH_SEARCH_BOX_H
+    MAX_DASH_LINE_LEN, IMAGE_BBOX_BUFFER, ENDPOINT_FILTER_R, VDOT_FILTER_R, MAX_D2D_DISTANCE, SEARCH_STEP_DEGREE, \
+    SML_DASH_SEARCH_BOX_W, SML_DASH_SEARCH_BOX_H, MIN_SWAMP_ENDPOINTS
 from line_proc import get_line_endpoints, create_centerline, \
-    get_extrapolated_point, get_path_line, find_nearest_geom, plot_line, \
+    get_extrapolated_point, get_shortest_path_line, find_nearest_geom, plot_line, \
     get_common_endpoints, get_close_points, filter_geoms, get_search_box, get_points_on_line
 from shapely.ops import unary_union, linemerge, nearest_points
 from itertools import combinations
@@ -12,26 +14,46 @@ from shapely.strtree import STRtree
 import matplotlib.pyplot as plt
 import logging
 from traceback import print_exc
+from typing import Tuple, List, Dict
 
 
-# TODO: getter, setter implement (property)
 class Dash:
     all_dashes = {}  # key: id(Polygon), value: Dash instance
 
     # check whether the polygon is already created as Dash
     @staticmethod
-    def is_already_created(poly):
+    def is_already_created(poly: Polygon) -> bool:
+        """
+        Check whether this polygon is already created as Dash object.
+
+        :param poly: a Shapely Polygon object
+        :return: a boolean value representing whether the polygon is already created as Dash object
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
         return id(poly) in Dash.all_dashes
 
     @staticmethod
-    def get_dash_obj(poly):
+    def get_dash_obj(poly: Polygon) -> object:
+        """
+        Get the Dash object created from the input polygon before.
+
+        :param poly: a Shapely Polygon object
+        :return: a Dash object
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
         return Dash.all_dashes[id(poly)]
 
-    def __init__(self, poly, centerline, endpoints, dash_line=None):
+    def __init__(self, poly: Polygon, centerline: BaseGeometry, endpoints: List[Point], dash_line: BaseGeometry = None):
+        """
+        :param poly: a Shapely Polygon object corresponding to this Dash object
+        :param centerline: a Shapely LineString or MultiLineString object created from the polygon corresponding to this
+            Dash object
+        :param endpoints: a list of Shapely Point objects representing endpoints of the line representing this Dash object
+        :param dash_line: a Shapely LineString or MultiLineString object representing the final line representing
+            this dash object. The final line is the line drawn for dash itself and its connecting line to its nearby dots.
+        """
         if not isinstance(poly, Polygon):
             raise TypeError(f'Inappropriate type: {type(poly)} for poly whereas a Polygon is expected')
 
@@ -45,7 +67,14 @@ class Dash:
         self.dash_line = dash_line
         self.dot_ep_pairs = []
 
-    def save_dot_ep_pairs(self, dot_ep_pairs):
+    def save_dot_ep_pairs(self, dot_ep_pairs: List[Tuple[object, Point]]) -> None:
+        """
+        Store a list of pairs of a Dot object and its closest endpoint of this Dash's centerline.
+        These pairs will be used when the connecting lines between this dash and nearby dots are drawn.
+
+        :param dot_ep_pairs: a list of pairs of a Dot object and a Shapely Point object
+        :return: None
+        """
         for dot, ep in dot_ep_pairs:
             if not isinstance(dot, Dot):
                 raise TypeError(f'Inappropriate type: {type(dot)} for dot whereas a Dot is expected')
@@ -57,24 +86,41 @@ class Dash:
             self.dot_ep_pairs.append((dot, ep))
 
 
-# TODO: getter, setter implement (property)
 class Dot:
     all_dots = {}  # key: id(Point), value: Dot instance
 
     # check whether the point is already created as Dot
     @staticmethod
-    def is_already_created(point):
+    def is_already_created(point: Point) -> bool:
+        """
+        Check whether this point is already created as Dot object.
+
+        :param point: a Shapely Point object
+        :return: a boolean value representing whether the point is already created as Dash object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return id(point) in Dot.all_dots
 
     @staticmethod
-    def get_dot_obj(point):
+    def get_dot_obj(point: Point) -> object:
+        """
+        Get the Dot object created from the input point before.
+
+        :param point: a Shapely Point object
+        :return: a Dot object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
         return Dot.all_dots[id(point)]
 
-    def __init__(self, point):
+    def __init__(self, point: Point):
+        """
+        :param point: a Shapely Point object corresponding to this Dot object
+        """
+
         if not isinstance(point, Point):
             raise TypeError(f'Inappropriate type: {type(point)} for point whereas a Point is expected')
 
@@ -85,13 +131,12 @@ class Dot:
         self.point = point
         self.dashes = {}
 
-    def search_dashes(self, non_dot_polys_tree, poly_line_dict, line_ep_dict,
-                      step_degree=SEARCH_STEP_DEGREE, sbox_w=DASH_SEARCH_BOX_W, sbox_h=DASH_SEARCH_BOX_H):
+    def search_dashes(self, non_dot_polys_tree: STRtree, poly_line_dict: Dict[int, BaseGeometry], line_ep_dict: Dict[int, List],
+                      step_degree: int = SEARCH_STEP_DEGREE, sbox_w: float = DASH_SEARCH_BOX_W, sbox_h: float = DASH_SEARCH_BOX_H)\
+            -> List[object]:
         """
         Search and saves the dashes on both sides of the dot
-        Returns the searched Dash objects
-
-        side effect: Dash objects can be created or updated.
+        Returns the searched dashes as tuples
 
         :param non_dot_polys_tree: STRTree that contains all polygons except the polygons created by dots
         :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
@@ -101,19 +146,29 @@ class Dot:
         :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
         :param sbox_h: height of dash search box
         :param sbox_w: width of dash search box
-        :return: a list of dash objects
+        :return: a list of tuples that contains attributes for a dash (poly, centerline, target_ep, endpoints)
         """
 
-        # distance: assumed distance from dot to dash (2*distance = search box width)
-        # buffer: search buffer (2*buffer = search box height)
-        def get_dash_search_boxes(dot, width=sbox_w, height=sbox_h):
+        def get_dash_search_boxes(dot: object, width: float = sbox_w, height: float = sbox_h) -> List[object]:
+            """
+            Get two dash search boxes. Each box covers one side from the dot.
+            (e.g., box1: left side of dot, box2: right side of dot)
+            The reason it creates two separate boxes is to reduce detecting false dashes.
+            The search algorithm regards polygons as dashes only if both boxes search exactly one polygon each.
+            The size of these boxes are assumed to be the distance between this dot and nearby dashes.
+
+            :param dot: a Dot object that will be the center of the search boxes
+            :param width: width of dash search box. This value corresponds to the widths of both boxes.
+            :param height: height of dash search box. This value corresponds to the heights of both boxes.
+            :return: a list of Shapely Polygon objects
+            """
             box1 = box(dot.x - width / 2, dot.y - height / 2, dot.x, dot.y + height / 2)
             box2 = box(dot.x, dot.y - height / 2, dot.x + width / 2, dot.y + height / 2)
             return [box1, box2]
 
-        # the dash polygon and endpoint pairs found in the search process
+        # the dash polygon and endpoint pairs found in the entire search process of a dot
         found_poly_ep_pairs = set()  # elements: f'{str(id(Polygon))}{str(id(Point))}'
-        found_dashes = []  # the Dash objects created by the search process
+        searched_dashes_all = []  # all the dash tuples created by the entire search process of a dot
 
         default_boxes = get_dash_search_boxes(self.point)
 
@@ -122,7 +177,7 @@ class Dot:
             search_boxes = [affinity.rotate(sbox, d, origin=self.point) for sbox in default_boxes]
 
             all_found = True  # True when all search boxes found exactly one polygon each
-            all_searched_dashes = []  # the polygons searched by this pair of search boxes
+            searched_dashes_two_boxes = []  # the polygons searched by this pair of search boxes
 
             # handle each search box one at a time
             for sbox in search_boxes:
@@ -135,7 +190,7 @@ class Dot:
 
                 # filter out false dash polygons based on rules
                 # dashes searched in a box; [(polygon, centerline, endpoints)]
-                searched_dashes = []
+                searched_dashes_one_box = []  # searched dashes in one box
                 for poly in candidate_polys:
                     # rule 1: dash polygon's perimeter should long enough
                     if poly.length > MAX_DOT_LEN:
@@ -146,8 +201,7 @@ class Dot:
                         endpoints = get_line_endpoints(poly_centerline, line_ep_dict)
 
                         # rule 2: dash polygon is not swamp symbol (too many endpoints compared to its perimeter)
-                        # TODO: 5 is a temporary value; to filter out swamp symbol with 6 endpoints
-                        if not (len(endpoints) > 5 and poly.length < MAX_SWAMP_SYMBOL_LEN):
+                        if not (len(endpoints) > MIN_SWAMP_ENDPOINTS and poly.length < MAX_SWAMP_SYMBOL_LEN):
                             # rule 3: dash polygon's endpoint should be in the search box
                             tree = STRtree(endpoints)
                             endpoints_in_sbox = tree.query(sbox)
@@ -162,15 +216,16 @@ class Dot:
                                 filtered_endpoints.append(target_ep)
 
                                 temp_dash = (poly, poly_centerline, target_ep, filtered_endpoints)
-                                searched_dashes.append(temp_dash)
+                                searched_dashes_one_box.append(temp_dash)
 
                 # rule 4: one search box should find only one dash
                 # however, the dashes found by each box can be the same dash
-                if len(searched_dashes) == 1:
-                    all_searched_dashes.extend(searched_dashes)
+                # (in case there are other lines or symbols overlaps with two nearby dashes at the same time)
+                if len(searched_dashes_one_box) == 1:
+                    searched_dashes_two_boxes.extend(searched_dashes_one_box)
                 else:
                     all_found = False
-                    all_searched_dashes.clear()
+                    searched_dashes_two_boxes.clear()
 
             # for sbox in search_boxes:
             #     plt.plot(*sbox.exterior.xy)
@@ -178,48 +233,35 @@ class Dot:
                 # for sbox in search_boxes:
                 #     plt.plot(*sbox.exterior.xy)
 
-                # create dash objects and pair them
-                for poly, centerline, target_ep, endpoints in all_searched_dashes:
+                for dash_tuple in searched_dashes_two_boxes:
+                    poly, _, target_ep, _ = dash_tuple
                     poly_ep_id = f'{str(id(poly))}{str(id(target_ep))}'
 
-                    # create or update dash object only if it is a new polygon-endpoint pair
+                    # add to searched dashes list only if it is a new polygon-endpoint pair
                     if poly_ep_id not in found_poly_ep_pairs:
                         found_poly_ep_pairs.add(poly_ep_id)
 
-                        if Dash.is_already_created(poly):
-                            dash = Dash.get_dash_obj(poly)
-                            dash.save_dot_ep_pairs([(self, target_ep)])
-                            # if dash object has already made by other dots, then store only the common endpoints
-                            dash.endpoints = get_common_endpoints(dash.endpoints, endpoints)
-                        else:
-                            dash = Dash(poly, centerline, endpoints)
-                            dash.save_dot_ep_pairs([(self, target_ep)])
+                        searched_dashes_all.append(dash_tuple)
 
-                        found_dashes.append(dash)
+        return searched_dashes_all
 
-                        # store the created dashes in the dot object
-                        self.dashes[id(poly)] = dash
-
-        return found_dashes
-
-    def search_additional_dashes(self, non_dot_polys_tree, step_degree=SEARCH_STEP_DEGREE,
-                                 sbox_w=SML_DASH_SEARCH_BOX_W, sbox_h=SML_DASH_SEARCH_BOX_H):
+    def search_additional_dashes(self, non_dot_polys_tree: STRtree, step_degree: int = SEARCH_STEP_DEGREE,
+                                 sbox_w: float = SML_DASH_SEARCH_BOX_W, sbox_h: float = SML_DASH_SEARCH_BOX_H) -> List[object]:
         """
         Search and saves additional dashes around the dot.
         Only the polygons that are already detected as dashes by other dots are searched.
         Returns the additionally searched and updated Dash objects
 
-        side effect: Dash objects can be updated.
-
         :param non_dot_polys_tree: STRTree that contains all polygons except the polygons created by dots
         :param step_degree: the rotation degree that will be applied to search boxes after each search iteration
         :param sbox_h: height of dash search box
         :param sbox_w: width of dash search box
-        :return: a list of updated dash objects
+        :return: a list of additionally searched dash polygons
         """
 
         default_box = get_search_box(self.point, sbox_w, sbox_h)
-        updated_dashes = []
+        searched_polys = []
+        searched_poly_ids = set()
 
         # rotate the search box to find the nearby ADDITIONAL dashes
         for d in range(0, 180, step_degree):
@@ -227,86 +269,60 @@ class Dot:
             # plt.plot(*sbox.exterior.xy)
 
             # candidate polygons searched by the search box
+            # filter out polygons that are already searched by previous iteration of this search process
             # filter out polygons that are already associated with this dot
             # filter out polygons that are not created as a Dash object before
-            searched_polys = [geom for geom in non_dot_polys_tree.query(sbox)
-                               if geom.intersects(sbox)
-                               and id(geom) not in self.dashes
-                               and id(geom) in Dash.all_dashes]
+            for geom in non_dot_polys_tree.query(sbox):
+                if (geom.intersects(sbox)
+                        and id(geom) not in searched_poly_ids
+                        and id(geom) not in self.dashes
+                        and id(geom) in Dash.all_dashes):
+                    searched_polys.append(geom)
+                    searched_poly_ids.add(id(geom))
 
-            # if len(searched_polys) > 0:
-            #     plt.plot(*sbox.exterior.xy)
-            # for poly in searched_polys:
-            #     plt.plot(*poly.exterior.xy)
+        return searched_polys
 
-            # associate the dash object with this dot
-            for poly in searched_polys:
+    def associate_dashes(self, non_dot_polys_tree: STRtree, poly_line_dict: Dict[int, BaseGeometry], line_ep_dict: Dict[int, List]) \
+            -> List[object]:
+        """
+        Search dashes and associate searched dashes with the current dot object.
+        The searched dash objects are created. The current dot object is also associated with the created dash objects
+
+        :param non_dot_polys_tree: STRTree that contains all polygons except the polygons created by dots
+        :param poly_line_dict: Dictionary that contains polygon and its created line. {id(polygon):line}.
+            This is to prevent redundant calls of creating centerline of polygon.
+        :param line_ep_dict: Dictionary that contains line and its endpoints. {id(line):[endpoints]}.
+            This is to prevent redundant calls of get_line_endpoints.
+        :return: a list of dash objects
+        """
+
+        dash_tuples = self.search_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
+
+        associated_dashes = []
+        # create or update dash objects based on searched dash tuples around the dot
+        for poly, centerline, target_ep, endpoints in dash_tuples:
+            # update a Dash object
+            if Dash.is_already_created(poly):
                 dash = Dash.get_dash_obj(poly)
-                # plot_line(dash.centerline)
-                all_points_on_line = get_points_on_line(dash.centerline)
+                dash.save_dot_ep_pairs([(self, target_ep)])
+                # if dash object has already made by other dots, then store only the common endpoints
+                dash.endpoints = get_common_endpoints(dash.endpoints, endpoints)
+            # create a new Dash object
+            else:
+                dash = Dash(poly, centerline, endpoints)
+                dash.save_dot_ep_pairs([(self, target_ep)])
 
-                contact_point = nearest_points(all_points_on_line, self.point)[0]  # contact point on the centerline
+            self.dashes[id(poly)] = dash
+            associated_dashes.append(dash)
 
-                # update the dash
-                dash.save_dot_ep_pairs([(self, contact_point)])
-
-                # store the updated dash in the dot object
-                self.dashes[id(poly)] = dash
-
-                updated_dashes.append(dash)
-
-        return updated_dashes
+        return associated_dashes
 
 
-
-
-
-
-
-
-
-
-
-
-
-# Helper functions related to Dot, Dash object
-# deprecated
-# def create_dash_pairs(dot, dash_poly_pairs):
-#     """
-#     Create dash pairs from dash polygon pairs
-#     When Dash object is already created from the same polygon, the dot is stored in that Dash object.
-#     When Dash object is newly created, the input dot is stored in that Dash object
-#
-#     :param dot: Dot object
-#     :param dash_poly_pairs: dash polygon pairs around the Dot object
-#     :return: Dash object pairs around the Dot object
-#     """
-#
-#     dash_pairs = []
-#     for dp1, dp2 in dash_poly_pairs:
-#         if Dash.is_already_created(dp1):
-#             dash1 = Dash.get_dash_obj(dp1)
-#             dash1.save_dots([dot])
-#         else:
-#             dash1 = Dash(dp1, [dot])
-#
-#         if Dash.is_already_created(dp2):
-#             dash2 = Dash.get_dash_obj(dp2)
-#             dash2.save_dots([dot])
-#         else:
-#             dash2 = Dash(dp2, [dot])
-#
-#         dash_pairs.append((dash1, dash2))
-#
-#     return dash_pairs
-
-
-def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
+def extract_dot_dashed_lines(dot_ps: List[Point], polygons: List[Polygon], image_bbox: LinearRing) -> BaseGeometry:
     """
     Extracts a solid vector line on dot-dash lines on the map.
     While searching dots and dashes on the map, it also creates
     instances of Dot and Dash classes.
-    TODO: need refactoring and performance optimization
 
     :param dot_ps: dots as shapely Points
     :param polygons: all the polygons on the map as shapely Polygons
@@ -315,7 +331,7 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     """
 
     all_drawn_lines = []
-    poly_line_dict = {}  # id(polygon):centerline
+    poly_line_dict = {}  # id(polygon):centerline, to prevent creating centerline for the same polygons
     line_ep_dict = {}
     dot_ps_tree = STRtree(dot_ps)
 
@@ -341,14 +357,13 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
     # initial dot and dash object creation
     for p in dot_ps:
         dot = Dot(p)
-        dashes = dot.search_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
+        dot.associate_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
 
     logging.info('Making virtual dots and searching dash polygons around them')
     # make virtual dots (dots not detected) for dashes having dots less than two.
     dashes_copy = list(Dash.all_dashes.values())
     vdot_ps = []  # a list of Shapely Point objects representing virtual dots' locations
     for dash in dashes_copy:
-        # TODO: need to come up with a way to determine if a dash has an endpoint without dot associated
         if dash.centerline is not None:
             # plot_line(dash.centerline)
             # filter out the endpoints close to valid dots
@@ -382,8 +397,10 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
         # create only the virtual dots that are not redundant
         if id(vdot_p) not in redundant_vdot_ps:
             vdot = Dot(vdot_p)
-            dashes = vdot.search_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
-            if len(dashes) == 0:
+            associated_dashes = vdot.associate_dashes(non_dot_polys_tree, poly_line_dict, line_ep_dict)
+
+            # remove virtual dot when there is no dash around it (false virtual dot)
+            if len(associated_dashes) == 0:
                 # plt.plot(vdot_p.x, vdot_p.y, marker="x")
                 del Dot.all_dots[id(vdot.point)]
                 del vdot  # delete virtual dot object
@@ -396,7 +413,22 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
     # search and associate additional dashes
     for dot in Dot.all_dots.values():
-        dot.search_additional_dashes(non_dot_polys_tree)
+        dash_polys = dot.search_additional_dashes(non_dot_polys_tree)
+
+        # update the dash objects
+        # associate the searched dash with this dot
+        for poly in dash_polys:
+            dash = Dash.get_dash_obj(poly)
+            # plot_line(dash.centerline)
+            all_points_on_line = get_points_on_line(dash.centerline)
+
+            contact_point = nearest_points(all_points_on_line, dot.point)[0]  # contact point on the centerline
+
+            # update the dash
+            dash.save_dot_ep_pairs([(dot, contact_point)])
+
+            # store the updated dash in the dot object
+            dot.dashes[id(poly)] = dash
 
     # obtain dash lines
     logging.info('Extracting the lines from dots and dash polygons')
@@ -433,8 +465,8 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
             path_lines = []
             for pair1, pair2 in combinations(dash.dot_ep_pairs, 2):
                 # if the points are too far away from each other, it is likely a solid line in between
-                if pair1[0].point.distance(pair2[0].point) < MAX_P2P_DISTANCE:
-                    path_line = get_path_line(mline, pair1[0].point, pair2[0].point)
+                if pair1[0].point.distance(pair2[0].point) < MAX_D2D_DISTANCE:
+                    path_line = get_shortest_path_line(mline, pair1[0].point, pair2[0].point)
                     path_lines.append(path_line)
 
             # filter out drawn lines that are possibly solid lines
@@ -444,7 +476,6 @@ def extract_dot_dashed_lines(dot_ps, polygons, image_bbox):
 
             if len(path_lines) > 0:
                 logging.info('Adding extracted dot dash lines')
-                # TODO: temporary exception handling for debugging purpose
                 try:
                     dash_line = unary_union(path_lines)
                     dash.dash_line = dash_line

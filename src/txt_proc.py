@@ -1,16 +1,17 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress keras warning
 
+from settings import DEFAULT_ALPHABETS
 import matplotlib.pyplot as plt
 import keras_ocr
 import cv2
 import math
 import numpy as np
+from typing import List, Tuple
 
 
-
-
-def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abcdefghijklmnopqrstuvwxyz'):
+def recognize_texts(image_path: str, model_path: str = None, target_alphabets: str = DEFAULT_ALPHABETS) \
+        -> List[Tuple[str, np.ndarray]]:
     """
     Recognize the designated alphabets from the image
 
@@ -18,7 +19,8 @@ def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abc
     :param model_path: keras-OCR trained model path
     :param target_alphabets: the characters that will be detected and recognized.
         They should match the trained model's target alphabet
-    :return: (word, box) tuples recognized from the image.
+    :return: a list of (word, box) tuples recognized from the image. word is the recognized characters as string,
+        and box is pixel coordinates of the bounding box of the detected label.
     """
 
     if model_path is None:
@@ -48,7 +50,15 @@ def recognize_texts(image_path, model_path=None, target_alphabets='0123456789abc
     return result
 
 
-def plot_prediction_result(image_file_path, prediction_result):
+def plot_prediction_result(image_file_path: str, prediction_result: List[Tuple[str, np.ndarray]]) -> None:
+    """
+    Plot prediction result visually by using matplotlib.
+
+    :param image_file_path: GeoTiff image path that OCR will be done
+    :param prediction_result: a list of (word, box) tuples
+    :return: None
+    """
+
     image = keras_ocr.tools.read(image_file_path)
 
     # plot the predictions
@@ -57,9 +67,24 @@ def plot_prediction_result(image_file_path, prediction_result):
     plt.show()
 
 
-# returns text removed image (cv2)
-def get_text_removed_image(image_file_path, prediction_result):
-    def midpoint(x1, y1, x2, y2):
+def get_text_removed_image(image_file_path: str, prediction_result: List[Tuple[str, np.ndarray]]) -> np.ndarray:
+    """
+    Get an image with the recognized text removed from the image.
+
+    :param image_file_path: GeoTiff image path that OCR will be done
+    :param prediction_result: a list of (word, box) tuples
+    :return: text removed image as openCV2 Numpy ndarray
+    """
+    def midpoint(x1: float, y1: float, x2: float, y2: float) -> Tuple[float, float]:
+        """
+        Get a coordinate of a midpoint between (x1,y1) and (x2,y2)
+
+        :param x1: x value 1
+        :param y1: y value 1
+        :param x2: x value 2
+        :param y2: y value 2
+        :return: a tuple representing a midpoint coordinate
+        """
         x_mid = int((x1 + x2) / 2)
         y_mid = int((y1 + y2) / 2)
         return (x_mid, y_mid)
